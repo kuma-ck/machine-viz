@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}断面データ表示 - Machine Viz{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">断面データ表示</h1>
+    <p class="page-description">月別の特性値分布をヒストグラムで表示します</p>
+</div>
+
+<div class="histogram-container">
+    <!-- 条件選択 -->
+    <div class="card condition-card">
+        <h2 class="card-title">条件設定</h2>
+        <form id="histogramForm" class="condition-form">
+            <div class="form-section">
+                <h3 class="form-section-title">基本条件</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="hist-series">機種シリーズ</label>
+                        <select id="hist-series" class="form-select">
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="hist-model">機種番号</label>
+                        <select id="hist-model" class="form-select" required>
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="hist-month">対象月</label>
+                        <select id="hist-month" class="form-select" required>
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3 class="form-section-title">特性値条件</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="hist-category">データカテゴリー</label>
+                        <select id="hist-category" class="form-select" required>
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="hist-characteristic">特性値ID</label>
+                        <select id="hist-characteristic" class="form-select" required>
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="hist-aggregation">集計方法</label>
+                        <select id="hist-aggregation" class="form-select" required>
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3 class="form-section-title">グループ比較（オプション）</h3>
+                <p class="form-hint">機番を入力すると、選択機番群とその他の比較ができます</p>
+                <div class="form-group">
+                    <label for="hist-machines">比較対象の機番（カンマまたは改行で区切り）</label>
+                    <textarea id="hist-machines" class="form-textarea" rows="4"
+                        placeholder="例: 651001, 651002, 651003&#10;機番検索ページで選択した機番をペースト可能"></textarea>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    <span class="btn-icon">📊</span>
+                    ヒストグラム表示
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- グラフ表示 -->
+    <div class="card chart-card" id="histogramCard" style="display: none;">
+        <div class="card-header">
+            <h2 class="card-title">ヒストグラム</h2>
+            <button type="button" id="histToTableBtn" class="btn btn-outline">
+                表形式で表示 →
+            </button>
+        </div>
+        <div class="chart-container">
+            <canvas id="histogramChart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initHistogramPage();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}時系列表示 - Machine Viz{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">時系列表示</h1>
+    <p class="page-description">機番ごとの特性値推移を時系列で可視化します（最大5台）</p>
+</div>
+
+<div class="timeseries-container">
+    <!-- 条件選択 -->
+    <div class="card condition-card">
+        <h2 class="card-title">条件設定</h2>
+        <form id="timeseriesForm" class="condition-form">
+            <div class="form-section">
+                <h3 class="form-section-title">機番条件</h3>
+                <div class="form-group">
+                    <label for="ts-machines">機番を入力（最大5台、カンマまたは改行で区切り）</label>
+                    <textarea id="ts-machines" class="form-textarea" rows="4"
+                        placeholder="例: 651001, 651002, 651003&#10;または&#10;651001&#10;651002&#10;651003"></textarea>
+                    <p class="form-hint">機番検索ページで選択した機番をコピーしてペーストできます</p>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3 class="form-section-title">特性値条件</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="ts-category">データカテゴリー</label>
+                        <select id="ts-category" class="form-select">
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ts-characteristic">特性値ID</label>
+                        <select id="ts-characteristic" class="form-select">
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ts-aggregation">集計方法</label>
+                        <select id="ts-aggregation" class="form-select">
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    <span class="btn-icon">📈</span>
+                    グラフ表示
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- グラフ表示 -->
+    <div class="card chart-card" id="chartCard" style="display: none;">
+        <div class="card-header">
+            <h2 class="card-title">時系列グラフ</h2>
+            <button type="button" id="toTableBtn" class="btn btn-outline">
+                表形式で表示 →
+            </button>
+        </div>
+        <div class="chart-container">
+            <canvas id="timeseriesChart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTimeseriesPage();
+    });
+</script>
+{% endblock %}

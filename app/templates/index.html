@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Machine Viz - ホーム{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="hero-content">
+        <h1 class="hero-title">
+            <span class="gradient-text">Machine Viz</span>
+        </h1>
+        <p class="hero-subtitle">機器情報可視化システム</p>
+        <p class="hero-description">
+            機種シリーズ・機種番号・機番に紐づく特性値データを<br>
+            検索・可視化するWebアプリケーション
+        </p>
+    </div>
+</div>
+
+<div class="features-section">
+    <div class="features-grid">
+        <!-- 機番検索 -->
+        <a href="/search" class="feature-card">
+            <div class="feature-icon">🔍</div>
+            <h3 class="feature-title">機番検索</h3>
+            <p class="feature-description">
+                機種シリーズ、機種番号、製造月、稼働開始月を指定して機番を検索。
+                ランダムサンプリング機能も搭載。
+            </p>
+            <span class="feature-arrow">→</span>
+        </a>
+
+        <!-- 時系列表示 -->
+        <a href="/timeseries" class="feature-card">
+            <div class="feature-icon">📈</div>
+            <h3 class="feature-title">時系列表示</h3>
+            <p class="feature-description">
+                最大5台の機番を選択し、特性値の推移を時系列グラフで可視化。
+                複数の集計方法に対応。
+            </p>
+            <span class="feature-arrow">→</span>
+        </a>
+
+        <!-- 断面データ表示 -->
+        <a href="/histogram" class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3 class="feature-title">断面データ表示</h3>
+            <p class="feature-description">
+                月別の特性値分布をヒストグラムで表示。
+                選択機番とその他のグループ比較が可能。
+            </p>
+            <span class="feature-arrow">→</span>
+        </a>
+
+        <!-- 表形式表示 -->
+        <a href="/table" class="feature-card">
+            <div class="feature-icon">📋</div>
+            <h3 class="feature-title">表形式表示</h3>
+            <p class="feature-description">
+                時系列・断面データを表形式で詳細表示。
+                データのエクスポートにも対応予定。
+            </p>
+            <span class="feature-arrow">→</span>
+        </a>
+    </div>
+</div>
+
+<div class="data-overview">
+    <h2 class="section-title">対応データ</h2>
+    <div class="data-cards">
+        <div class="data-card">
+            <h4>機種シリーズ</h4>
+            <div class="data-tags">
+                <span class="tag">SERIES-1</span>
+                <span class="tag">SERIES-2</span>
+                <span class="tag">SERIES-3</span>
+            </div>
+        </div>
+        <div class="data-card">
+            <h4>データカテゴリー</h4>
+            <div class="data-tags">
+                <span class="tag tag-blue">生産時データ</span>
+                <span class="tag tag-green">稼働時データ</span>
+            </div>
+        </div>
+        <div class="data-card">
+            <h4>集計方法</h4>
+            <div class="data-tags">
+                <span class="tag tag-purple">平均値</span>
+                <span class="tag tag-purple">最大値</span>
+                <span class="tag tag-purple">最小値</span>
+                <span class="tag tag-purple">合計値</span>
+                <span class="tag tag-purple">カウント</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

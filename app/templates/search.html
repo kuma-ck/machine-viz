@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}機番検索 - Machine Viz{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">機番検索</h1>
+    <p class="page-description">条件を指定して機番を検索します</p>
+</div>
+
+<div class="search-container">
+    <!-- 検索フォーム -->
+    <div class="card search-form-card">
+        <h2 class="card-title">検索条件</h2>
+        <form id="searchForm" class="search-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="series">機種シリーズ</label>
+                    <select id="series" name="series" class="form-select">
+                        <option value="">すべて</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>機種番号 <span class="label-hint" id="modelHint">(シリーズを選択してください)</span></label>
+                    <div class="multi-select-container" id="modelContainer">
+                        <div class="multi-select-list" id="modelList">
+                            <!-- チェックボックスはJSで動的生成 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section-divider">
+                <span class="divider-label">期間条件</span>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>製造月</label>
+                    <div class="date-range-group">
+                        <select id="manufacture_month_from" class="form-select">
+                            <option value="">開始月</option>
+                        </select>
+                        <span class="range-separator">〜</span>
+                        <select id="manufacture_month_to" class="form-select">
+                            <option value="">終了月</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>稼働開始月</label>
+                    <div class="date-range-group">
+                        <select id="operation_start_month_from" class="form-select">
+                            <option value="">開始月</option>
+                        </select>
+                        <span class="range-separator">〜</span>
+                        <select id="operation_start_month_to" class="form-select">
+                            <option value="">終了月</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" id="searchBtn">
+                    <span class="btn-icon">🔍</span>
+                    <span class="btn-text">検索</span>
+                    <span class="btn-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        検索中...
+                    </span>
+                </button>
+                <button type="button" id="clearBtn" class="btn btn-secondary">
+                    クリア
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- サンプリング -->
+    <div class="card sampling-card" id="samplingCard" style="display: none;">
+        <h2 class="card-title">ランダムサンプリング</h2>
+        <div class="sampling-form">
+            <div class="form-group inline-group">
+                <label for="sampleSize">サンプリング数</label>
+                <input type="number" id="sampleSize" min="1" value="3" class="form-input">
+                <button type="button" id="sampleBtn" class="btn btn-accent">
+                    サンプリング実行
+                </button>
+            </div>
+            <p class="sampling-info">
+                現在 <span id="totalCount">0</span> 件の機番が表示されています
+            </p>
+        </div>
+    </div>
+
+    <!-- 検索結果 -->
+    <div class="card results-card" id="resultsCard" style="display: none;">
+        <div class="card-header">
+            <div class="card-title-group">
+                <h2 class="card-title">検索結果</h2>
+                <span class="result-count-badge" id="resultCountBadge">0件</span>
+                <span class="selected-count-badge" id="selectedCountBadge" style="display: none;">0件選択中</span>
+            </div>
+            <div class="result-actions">
+                <button type="button" id="copySelectedBtn" class="btn btn-accent" disabled>
+                    📋 選択した機番をコピー
+                </button>
+                <button type="button" id="toTimeseriesBtn" class="btn btn-outline" disabled>
+                    時系列表示へ →
+                </button>
+                <button type="button" id="toHistogramBtn" class="btn btn-outline" disabled>
+                    断面データ表示へ →
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table class="data-table" id="resultsTable">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="selectAll"></th>
+                        <th>機番</th>
+                        <th>機種シリーズ</th>
+                        <th>機種番号</th>
+                        <th>製造月</th>
+                        <th>稼働開始月</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initSearchPage();
+    });
+</script>
+{% endblock %}

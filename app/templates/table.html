@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}表形式表示 - Machine Viz{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">表形式表示</h1>
+    <p class="page-description">時系列・断面データを表形式で表示します</p>
+</div>
+
+<div class="table-view-container">
+    <!-- データ情報 -->
+    <div class="card info-card">
+        <div class="data-info" id="dataInfo">
+            <p class="no-data-message">データがありません。時系列表示または断面データ表示からアクセスしてください。</p>
+        </div>
+    </div>
+
+    <!-- テーブル表示 -->
+    <div class="card table-card" id="tableCard" style="display: none;">
+        <div class="card-header">
+            <h2 class="card-title" id="tableTitle">データテーブル</h2>
+            <div class="table-actions">
+                <button type="button" id="exportCsvBtn" class="btn btn-outline">
+                    📥 CSV出力
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table class="data-table" id="dataTable">
+                <thead id="tableHead">
+                </thead>
+                <tbody id="tableBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ナビゲーション -->
+    <div class="card nav-card">
+        <div class="nav-buttons">
+            <a href="/timeseries" class="btn btn-secondary">← 時系列表示に戻る</a>
+            <a href="/histogram" class="btn btn-secondary">← 断面データ表示に戻る</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTablePage();
+    });
+</script>
+{% endblock %}
