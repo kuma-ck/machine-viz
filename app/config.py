@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # ログ設定
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     
+    # データソース設定
+    use_dummy_data: bool = True  # Trueでダミーデータ、Falseでデータベースを使用
+    
     @property
     def is_development(self) -> bool:
         """開発環境かどうか"""
@@ -45,10 +48,7 @@ class Settings(BaseSettings):
         """本番環境かどうか"""
         return self.app_env == "production"
     
-    @property
-    def use_dummy_data(self) -> bool:
-        """ダミーデータを使用するかどうか（開発環境ではTrue）"""
-        return self.is_development
+
 
 
 @lru_cache

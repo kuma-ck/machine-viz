@@ -7,14 +7,58 @@
 ---
 
 ## 技術スタック
-- **バックエンド**: Python FastAPI
-- **テンプレートエンジン**: Jinja2
-- **グラフ描画**: Chart.js (CDN) + プラグイン
-  - chartjs-plugin-zoom（Brush & Zoom）
-  - chartjs-plugin-annotation（アノテーション）
-  - chartjs-chart-boxplot（箱ひげ図）
-- **スタイリング**: Vanilla CSS（ライトモードデザイン）
-- **データ**: ダミーデータ（将来的にDB接続予定）
+
+| カテゴリ | 技術 |
+|---------|------|
+| バックエンド | Python FastAPI |
+| テンプレートエンジン | Jinja2 |
+| グラフ描画 | Chart.js + プラグイン（zoom, annotation, boxplot） |
+| スタイリング | Vanilla CSS（ライトモードデザイン） |
+| データベース | SQLAlchemy 2.0 + Alembic（SQLite/PostgreSQL/SQL Server） |
+| 認証 | Cookieセッション + bcrypt |
+
+---
+
+## 環境設定
+
+`.env` ファイルで環境を設定:
+
+```bash
+# アプリケーション設定
+APP_ENV=development          # development / staging / production
+APP_DEBUG=true
+APP_HOST=127.0.0.1
+APP_PORT=8000
+
+# データベース設定
+DATABASE_URL=sqlite:///./machine_viz.db
+
+# データソース設定
+USE_DUMMY_DATA=true          # true=ダミーデータ, false=データベース
+
+# セキュリティ
+SECRET_KEY=your-secret-key
+LOG_LEVEL=DEBUG
+```
+
+---
+
+## 認証・認可
+
+### ログイン
+- Cookieベースのセッション認証
+- パスワードはbcryptでハッシュ化
+- セッション有効期限: 7日間
+
+### 管理者ユーザー作成
+```bash
+PYTHONPATH=. uv run python scripts/create_admin.py <username> <password>
+```
+
+### ページ保護
+- 全ページ（ログイン画面を除く）は認証必須
+- 未ログイン時はログイン画面にリダイレクト
+- ナビゲーションバーにログアウトボタン
 
 ---
 
@@ -52,6 +96,9 @@
   - 最大2変数まで追加可能（左軸・右軸各1つ）
   - 変数ごとにカテゴリー・特性値ID・集計方法を選択
   - 自動的に1つ目は左軸、2つ目は右軸に配置
+- **X軸タイプ切り替え**:
+  - 時間（月次）: 月ごとの推移
+  - 使用回数: 0〜1100の使用回数ベース
 - **Brush & Zoom**:
   - メインチャートの上に概要チャート（全期間表示）
   - マウスホイールでズーム、ドラッグでパン操作
@@ -59,10 +106,12 @@
 - **アノテーション**:
   - イベント情報（FW更新、部品交換、メンテナンス、エラー発生）を縦線で表示
   - チェックボックスでアノテーション表示/非表示切替
-  - 凡例で各イベントタイプの色を識別
+  - 使用回数モードではアノテーション非表示
+  - 複数機番選択時は機番ラベル表示
 - **URL状態管理**:
   - 選択中の期間・フィルタ条件・表示変数をURLパラメータに自動反映
   - 「URLをコピー」ボタンで分析状態を即座に共有可能
+  - URLアクセス時に自動でグラフ表示
 - **表形式表示への遷移**: グラフデータを表形式で確認可能
 
 ### 4. 断面データ表示（EDA型ダッシュボード）
@@ -74,7 +123,9 @@
   - **散布図**: 2変数の相関を可視化、相関係数を自動表示
   - **箱ひげ図**: 機種ごとの分布（中央値、四分位範囲）を比較
 - **グループ比較**: 比較対象の機番をテキストエリアで入力し、選択機番群とその他機番群で比較可能
-- **URL状態管理**: チャート種別・フィルタ条件をURLパラメータに反映
+- **URL状態管理**: 
+  - チャート種別・フィルタ条件をURLパラメータに反映
+  - URLアクセス時に自動でグラフ表示
 - **表形式表示への遷移**: グラフデータを表形式で確認可能
 
 ### 5. 表形式表示
@@ -83,66 +134,29 @@
 
 ---
 
-## 画面遷移
+## データベース設計
 
+### ER図
 ```
-トップ画面
-    ├→ 機番検索 ─→ 時系列表示 ─→ 表形式表示
-    │           └→ 断面データ表示 ─→ 表形式表示
-    ├→ 時系列表示 ─→ 表形式表示
-    └→ 断面データ表示 ─→ 表形式表示
+Series (1) ─── (N) Model (1) ─── (N) Machine
+Category (1) ─── (N) Characteristic
+Machine (1) ─── (N) MachineData
+Machine (1) ─── (N) Annotation
+User（認証用）
 ```
 
-### データ受け渡し
-- **機番検索 → 時系列表示/断面データ表示**: sessionStorageを使用して選択機番を受け渡し
-- **時系列表示/断面データ表示 → 表形式表示**: sessionStorageを使用してグラフデータを受け渡し
-- **URL状態管理**: URLパラメータで分析状態を共有可能
-
----
-
-## データ構造
-
-### 機種シリーズ
-- SERIES-1
-- SERIES-2
-- SERIES-3
-
-### 機種番号
-| シリーズ | 機種番号 | 機種数 | 機番数/機種 |
-|---------|---------|-------|-----------​|
-| SERIES-1 | A-1 〜 A-3 | 3 | 10,000 |
-| SERIES-2 | B-1 〜 B-2 | 2 | 10,000 |
-| SERIES-3 | C-1 〜 C-5 | 5 | 10,000 |
-
-### 機番
-- **総件数**: 約100,000件（3×10,000 + 2×10,000 + 5×10,000）
-- **形式**: 機種番号-6桁数字（例: A-1-000001, B-2-000001, C-3-000001）
-- **製造月・稼働開始月**: 過去24ヶ月に均等分布
-
-### データカテゴリー
-- 生産時データ
-- 稼働時データ
-
-### 特性値ID
-| カテゴリー | 特性値ID |
-|-----------|---------​|
-| 生産時データ | 特性値ID1, 特性値ID2, 特性値ID3 |
-| 稼働時データ | 特性値ID1, 特性値ID2, 特性値ID3 |
-
-### 集計方法
-- 平均値
-- 最大値
-- 最小値
-- 合計値
-- カウント
-
-### アノテーションタイプ
-| タイプ | 色 | 用途 |
-|--------|------|------|
-| FW更新 | 青 | ファームウェア更新日 |
-| 部品交換 | オレンジ | 部品交換日 |
-| メンテナンス | 緑 | 定期メンテナンス |
-| エラー発生 | 赤 | エラー発生時刻 |
+### テーブル一覧
+| テーブル | 説明 |
+|---------|------|
+| series | 機種シリーズ |
+| models | 機種番号 |
+| machines | 機番 |
+| categories | データカテゴリー |
+| characteristics | 特性値ID |
+| aggregations | 集計方法 |
+| machine_data | 機番データ（時系列） |
+| annotations | アノテーション |
+| users | ユーザー（認証用） |
 
 ---
 
@@ -152,14 +166,28 @@
 machine-viz/
 ├── app/
 │   ├── main.py              # FastAPIアプリ
+│   ├── config.py            # 環境設定
+│   ├── database.py          # DB接続設定
+│   ├── exceptions.py        # カスタム例外
+│   ├── error_handlers.py    # エラーハンドラー
+│   ├── auth/                # 認証モジュール
+│   │   ├── service.py       # 認証サービス
+│   │   └── dependencies.py  # FastAPI依存性
+│   ├── models/              # SQLAlchemyモデル
+│   │   ├── base.py          # 機器関連モデル
+│   │   └── user.py          # ユーザーモデル
 │   ├── routers/
 │   │   ├── api.py           # APIエンドポイント
+│   │   ├── auth.py          # 認証API
 │   │   └── pages.py         # ページルーティング
 │   ├── data/
 │   │   ├── dummy.py         # ダミーデータ生成
-│   │   └── annotations.py   # アノテーションデータ生成
-│   ├── templates/           # Jinja2テンプレート
+│   │   ├── annotations.py   # アノテーションデータ
+│   │   ├── repository.py    # DBリポジトリ
+│   │   └── data_service.py  # データサービス（dummy/DB切り替え）
+│   ├── templates/
 │   │   ├── base.html
+│   │   ├── login.html
 │   │   ├── index.html
 │   │   ├── search.html
 │   │   ├── timeseries.html
@@ -168,6 +196,12 @@ machine-viz/
 │   └── static/
 │       ├── css/style.css
 │       └── js/app.js
+├── migrations/              # Alembicマイグレーション
+├── scripts/
+│   ├── seed_data.py         # 初期データ投入
+│   └── create_admin.py      # 管理者作成
+├── .env                     # 環境設定
+├── .env.example             # 環境設定テンプレート
 ├── pyproject.toml
 └── README.md
 ```
@@ -175,6 +209,11 @@ machine-viz/
 ---
 
 ## APIエンドポイント
+
+### 認証
+- `POST /api/auth/login` - ログイン
+- `POST /api/auth/logout` - ログアウト
+- `GET /api/auth/me` - 現在のユーザー取得
 
 ### マスタデータ
 - `GET /api/series` - シリーズ一覧
@@ -199,10 +238,37 @@ machine-viz/
 
 ## 起動方法
 
+### 開発環境
 ```bash
 cd /path/to/machine-viz
 source .venv/bin/activate
+
+# 依存関係インストール
+uv sync
+
+# マイグレーション実行
+uv run alembic upgrade head
+
+# 初期データ投入（オプション）
+PYTHONPATH=. uv run python scripts/seed_data.py
+
+# 管理者ユーザー作成
+PYTHONPATH=. uv run python scripts/create_admin.py admin password123
+
+# サーバー起動
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
 アクセス: http://127.0.0.1:8000
+
+### 本番環境
+```bash
+# 環境変数設定
+APP_ENV=production
+USE_DUMMY_DATA=false
+DATABASE_URL=postgresql://user:pass@host:5432/db
+SECRET_KEY=<secure-random-key>
+
+# サーバー起動（Gunicorn推奨）
+gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
+```

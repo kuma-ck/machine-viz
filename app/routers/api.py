@@ -1,22 +1,37 @@
 """
 APIエンドポイント
+
+データサービス層を使用してデータを取得。
+開発環境ではダミーデータ、本番環境ではデータベースから取得。
 """
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.data import dummy
-from app.data import annotations
+from app.config import settings
+from app.database import get_db
+from app.data import data_service
 
 router = APIRouter(tags=["api"])
+
+
+# 依存性注入：本番環境のみDBセッションを提供
+async def get_optional_db() -> AsyncSession | None:
+    """設定に応じてDBセッションを提供（開発環境ではNone）"""
+    if settings.use_dummy_data:
+        return None
+    async for db in get_db():
+        return db
+    return None
 
 
 # リクエストモデル
 class SearchRequest(BaseModel):
     series: str | None = None
-    models: list[str] | None = None  # 複数選択対応
+    models: list[str] | None = None
     manufacture_month_from: str | None = None
     manufacture_month_to: str | None = None
     operation_start_month_from: str | None = None
@@ -38,9 +53,9 @@ class TimeseriesRequest(BaseModel):
 class MultiTimeseriesRequest(BaseModel):
     """多変量時系列リクエスト"""
     machine_ids: list[str]
-    variables: list[dict[str, str]]  # [{"category": "...", "characteristic_id": "...", "axis": "left|right"}]
+    variables: list[dict[str, str]]
     aggregation: str
-    x_axis_type: str = "time"  # "time" or "usage"
+    x_axis_type: str = "time"
 
 
 class HistogramRequest(BaseModel):
@@ -66,7 +81,7 @@ class ScatterRequest(BaseModel):
 
 class BoxplotRequest(BaseModel):
     """箱ひげ図リクエスト"""
-    models: list[str]  # 複数機種をグループ比較
+    models: list[str]
     category: str
     characteristic_id: str
     aggregation: str
@@ -81,80 +96,79 @@ class AnnotationsRequest(BaseModel):
 
 # マスターデータ取得
 @router.get("/series")
-def get_series() -> list[str]:
+async def get_series(db: AsyncSession | None = Depends(get_optional_db)) -> list[str]:
     """機種シリーズ一覧"""
-    return dummy.get_series_list()
+    return await data_service.get_series(db)
 
 
 @router.get("/models/{series}")
-def get_models(series: str) -> list[str]:
+async def get_models(series: str, db: AsyncSession | None = Depends(get_optional_db)) -> list[str]:
     """機種番号一覧"""
-    return dummy.get_models_by_series(series)
+    return await data_service.get_models(series, db)
 
 
 @router.get("/machines/{model}")
-def get_machines(model: str) -> list[str]:
+async def get_machines(model: str, db: AsyncSession | None = Depends(get_optional_db)) -> list[str]:
     """機番一覧"""
-    return dummy.get_machines_by_model(model)
+    return await data_service.get_machines(model, db)
 
 
 @router.get("/categories")
-def get_categories() -> list[str]:
+async def get_categories(db: AsyncSession | None = Depends(get_optional_db)) -> list[str]:
     """データカテゴリー一覧"""
-    return dummy.get_data_categories()
+    return await data_service.get_categories(db)
 
 
 @router.get("/characteristics/{category}")
-def get_characteristics(category: str) -> list[str]:
+async def get_characteristics(category: str, db: AsyncSession | None = Depends(get_optional_db)) -> list[str]:
     """特性値ID一覧"""
-    return dummy.get_characteristic_ids(category)
+    return await data_service.get_characteristics(category, db)
 
 
 @router.get("/aggregations")
-def get_aggregations() -> list[str]:
+async def get_aggregations(db: AsyncSession | None = Depends(get_optional_db)) -> list[str]:
     """集計方法一覧"""
-    return dummy.get_aggregation_methods()
+    return await data_service.get_aggregations(db)
 
 
 @router.get("/months")
-def get_months() -> list[str]:
+async def get_months(db: AsyncSession | None = Depends(get_optional_db)) -> list[str]:
     """選択可能月一覧"""
-    return dummy.get_available_months()
+    return await data_service.get_months(db)
 
 
 @router.get("/annotation-types")
 def get_annotation_types() -> list[dict[str, str]]:
     """アノテーションタイプ一覧"""
-    return annotations.get_annotation_types()
+    return data_service.get_annotation_types()
 
 
 # 機番検索
 @router.post("/search")
-def search_machines(req: SearchRequest) -> list[dict[str, Any]]:
+async def search_machines(req: SearchRequest, db: AsyncSession | None = Depends(get_optional_db)) -> list[dict[str, Any]]:
     """条件に合致する機番を検索"""
-    return dummy.search_machines(
+    return await data_service.search_machines(
         series=req.series,
         models=req.models,
         manufacture_month_from=req.manufacture_month_from,
         manufacture_month_to=req.manufacture_month_to,
         operation_start_month_from=req.operation_start_month_from,
         operation_start_month_to=req.operation_start_month_to,
+        db=db,
     )
 
 
 @router.post("/sample")
 def sample_machines(req: SampleRequest) -> list[str]:
     """機番リストからランダムサンプリング"""
-    machines = [{"machine_id": mid} for mid in req.machine_ids]
-    sampled = dummy.random_sample_machines(machines, req.sample_size)
-    return [m["machine_id"] for m in sampled]
+    return data_service.sample_machines(req.machine_ids, req.sample_size)
 
 
 # 時系列データ
 @router.post("/timeseries")
 def get_timeseries(req: TimeseriesRequest) -> dict[str, Any]:
     """時系列データを取得"""
-    return dummy.generate_timeseries_data(
+    return data_service.get_timeseries(
         machine_ids=req.machine_ids,
         category=req.category,
         characteristic_id=req.characteristic_id,
@@ -165,7 +179,7 @@ def get_timeseries(req: TimeseriesRequest) -> dict[str, Any]:
 @router.post("/timeseries/multi")
 def get_multi_timeseries(req: MultiTimeseriesRequest) -> dict[str, Any]:
     """多変量時系列データを取得"""
-    return dummy.generate_multi_timeseries_data(
+    return data_service.get_multi_timeseries(
         machine_ids=req.machine_ids,
         variables=req.variables,
         aggregation=req.aggregation,
@@ -176,7 +190,7 @@ def get_multi_timeseries(req: MultiTimeseriesRequest) -> dict[str, Any]:
 @router.post("/annotations")
 def get_annotations(req: AnnotationsRequest) -> list[dict[str, Any]]:
     """アノテーション（イベント情報）を取得"""
-    return annotations.get_annotations_for_timeseries(
+    return data_service.get_annotations(
         machine_ids=req.machine_ids,
         months=req.months,
     )
@@ -186,7 +200,7 @@ def get_annotations(req: AnnotationsRequest) -> list[dict[str, Any]]:
 @router.post("/histogram")
 def get_histogram(req: HistogramRequest) -> dict[str, Any]:
     """断面データを取得"""
-    return dummy.generate_histogram_data(
+    return data_service.get_histogram(
         model=req.model,
         category=req.category,
         characteristic_id=req.characteristic_id,
@@ -199,7 +213,7 @@ def get_histogram(req: HistogramRequest) -> dict[str, Any]:
 @router.post("/scatter")
 def get_scatter(req: ScatterRequest) -> dict[str, Any]:
     """散布図データを取得"""
-    return dummy.generate_scatter_data(
+    return data_service.get_scatter(
         model=req.model,
         x_category=req.x_category,
         x_characteristic_id=req.x_characteristic_id,
@@ -214,7 +228,7 @@ def get_scatter(req: ScatterRequest) -> dict[str, Any]:
 @router.post("/boxplot")
 def get_boxplot(req: BoxplotRequest) -> dict[str, Any]:
     """箱ひげ図データを取得"""
-    return dummy.generate_boxplot_data(
+    return data_service.get_boxplot(
         models=req.models,
         category=req.category,
         characteristic_id=req.characteristic_id,

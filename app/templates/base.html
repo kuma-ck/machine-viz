@@ -35,6 +35,11 @@
                 <li><a href="/timeseries" class="nav-link">時系列表示</a></li>
                 <li><a href="/histogram" class="nav-link">断面データ</a></li>
             </ul>
+            <div class="nav-user">
+                <button id="logout-btn" class="logout-btn" title="ログアウト">
+                    <span>ログアウト</span>
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -52,6 +57,20 @@
 
     <!-- JavaScript -->
     <script src="/static/js/app.js"></script>
+    <script>
+        // ログアウト処理
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', async () => {
+                try {
+                    await fetch('/api/auth/logout', { method: 'POST' });
+                    window.location.href = '/login';
+                } catch (error) {
+                    console.error('Logout failed:', error);
+                }
+            });
+        }
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 
