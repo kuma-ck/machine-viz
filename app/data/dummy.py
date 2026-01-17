@@ -32,7 +32,7 @@ def _generate_models_and_machines() -> tuple[dict[str, list[str]], dict[str, lis
     """
     機種番号と機番を動的に生成
     SERIES-1: 3機種, SERIES-2: 2機種, SERIES-3: 5機種
-    機番は8桁（例: 65010001）
+    機番は「機種番号-6桁数字」形式（例: A-1-000001）
     合計約100,000件
     """
     models_by_series: dict[str, list[str]] = {}
@@ -55,14 +55,10 @@ def _generate_models_and_machines() -> tuple[dict[str, list[str]], dict[str, lis
             model_id = f"{prefix}-{model_num}"
             models.append(model_id)
             
-            # 8桁の機番を生成（例: 65010001 〜 65019999）
+            # 機番を「機種番号-6桁数字」形式で生成（例: A-1-000001）
             machines = []
-            # プレフィックス部分: A=65, B=66, C=67
-            prefix_num = 65 + (ord(prefix) - ord("A"))
-            base_num = prefix_num * 1000000 + model_num * 10000
-            
             for machine_num in range(1, config["machines_per_model"] + 1):
-                machine_id = str(base_num + machine_num).zfill(8)
+                machine_id = f"{model_id}-{machine_num:06d}"
                 machines.append(machine_id)
             
             machines_by_model[model_id] = machines
@@ -107,7 +103,13 @@ def _get_machine_detail(machine_id: str, model: str, series: str) -> dict[str, A
     months = _AVAILABLE_MONTHS
     
     # 機番IDから決定論的にインデックスを計算（均等分布）
-    machine_num = int(machine_id) % 10000
+    # 新フォーマット（A-1-000001）から末尾の数字部分を抽出
+    parts = machine_id.split("-")
+    if len(parts) >= 3:
+        machine_num = int(parts[-1])
+    else:
+        # 旧フォーマット対応（8桁数字）
+        machine_num = int(machine_id) % 10000
     
     # 製造月: 機番を18で割った余りでインデックス決定（6〜23の範囲で均等分布）
     mfg_idx = 6 + (machine_num % 18)
@@ -396,4 +398,330 @@ def generate_histogram_data(
         }
     
     return result_data
+
+
+def generate_multi_timeseries_data(
+    machine_ids: list[str],
+    variables: list[dict[str, str]],
+    aggregation: str,
+    x_axis_type: str = "time",
+    months: int = 12,
+) -> dict[str, Any]:
+    """
+    多変量時系列データを生成（マルチY軸対応）
+    
+    Args:
+        machine_ids: 機番リスト
+        variables: [{"category": "...", "characteristic_id": "...", "axis": "left|right"}]
+        aggregation: 集計方法
+        x_axis_type: "time" (月次) or "usage" (使用回数)
+        months: 月数
+    
+    Returns:
+        {
+            "labels": ["2025-02", "2025-03", ...] or ["100", "200", ...],
+            "datasets": [...],
+            "scales": {...},
+            "x_axis_type": "time" or "usage"
+        }
+    """
+    base_date = datetime(2026, 1, 1)
+    
+    # X軸ラベルを生成
+    if x_axis_type == "usage":
+        # 使用回数ベース（0〜1000回を12分割）
+        labels = [str(i * 100) for i in range(months)]
+    else:
+        # 時間ベース（月次）
+        labels = []
+        for i in range(months - 1, -1, -1):
+            d = base_date - timedelta(days=i * 30)
+            labels.append(d.strftime("%Y-%m"))
+    
+    datasets = []
+    left_values: list[float] = []
+    right_values: list[float] = []
+    
+    for machine_id in machine_ids:
+        for var in variables:
+            category = var.get("category", "")
+            char_id = var.get("characteristic_id", "")
+            axis = var.get("axis", "left")
+            
+            # シード値を設定して再現性を確保
+            seed = hash(f"{machine_id}_{category}_{char_id}_{x_axis_type}")
+            random.seed(seed)
+            
+            # 特性値ごとに異なる基準値を設定
+            char_base = {"特性値ID1": 100, "特性値ID2": 300, "特性値ID3": 50}
+            base_value = char_base.get(char_id, random.uniform(50, 150))
+            
+            data = []
+            for idx in range(months):
+                raw_count = random.randint(5, 15)
+                raw_values = [base_value + random.uniform(-30, 30) for _ in range(raw_count)]
+                
+                if aggregation == "平均値":
+                    result = sum(raw_values) / len(raw_values)
+                elif aggregation == "最大値":
+                    result = max(raw_values)
+                elif aggregation == "最小値":
+                    result = min(raw_values)
+                elif aggregation == "合計値":
+                    result = sum(raw_values)
+                elif aggregation == "カウント":
+                    result = len(raw_values)
+                else:
+                    result = sum(raw_values) / len(raw_values)
+                
+                # 使用回数モードでは劣化傾向を表現
+                if x_axis_type == "usage":
+                    degradation = idx * random.uniform(0.5, 2.0)
+                    base_value += degradation
+                else:
+                    base_value += random.uniform(-5, 5)
+                    
+                data.append(round(result, 2))
+            
+            datasets.append({
+                "machine_id": machine_id,
+                "variable": {"category": category, "characteristic_id": char_id},
+                "axis": axis,
+                "data": data,
+            })
+            
+            # スケール計算用
+            if axis == "left":
+                left_values.extend(data)
+            else:
+                right_values.extend(data)
+    
+    random.seed()
+    
+    # スケール情報
+    scales = {}
+    if left_values:
+        scales["left"] = {
+            "min": 0,
+            "max": max(left_values) * 1.2,
+            "label": variables[0].get("characteristic_id", ""),
+        }
+    if right_values:
+        right_vars = [v for v in variables if v.get("axis") == "right"]
+        scales["right"] = {
+            "min": 0,
+            "max": max(right_values) * 1.2,
+            "label": right_vars[0].get("characteristic_id", "") if right_vars else "",
+        }
+    
+    return {
+        "labels": labels,
+        "datasets": datasets, 
+        "scales": scales,
+        "x_axis_type": x_axis_type,
+    }
+
+
+def generate_scatter_data(
+    model: str,
+    x_category: str,
+    x_characteristic_id: str,
+    y_category: str,
+    y_characteristic_id: str,
+    aggregation: str,
+    target_month: str,
+    selected_machine_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    散布図データを生成
+    
+    Returns:
+        {
+            "data": [
+                {"machine_id": "65010001", "x": 50.5, "y": 120.3, "selected": true},
+                ...
+            ],
+            "x_label": "特性値ID1",
+            "y_label": "特性値ID2",
+            "correlation": 0.75
+        }
+    """
+    machines = MACHINES_BY_MODEL.get(model, [])
+    data = []
+    
+    x_values = []
+    y_values = []
+    
+    for machine_id in machines:
+        # X軸の値
+        seed_x = hash(f"{machine_id}_{x_category}_{x_characteristic_id}_{target_month}")
+        random.seed(seed_x)
+        raw_count = random.randint(3, 10)
+        base_x = random.uniform(40, 100)
+        raw_x = [base_x + random.uniform(-25, 25) for _ in range(raw_count)]
+        
+        if aggregation == "平均値":
+            x_val = sum(raw_x) / len(raw_x)
+        elif aggregation == "最大値":
+            x_val = max(raw_x)
+        elif aggregation == "最小値":
+            x_val = min(raw_x)
+        elif aggregation == "合計値":
+            x_val = sum(raw_x)
+        elif aggregation == "カウント":
+            x_val = len(raw_x)
+        else:
+            x_val = sum(raw_x) / len(raw_x)
+        
+        # Y軸の値（X軸と相関を持たせる）
+        seed_y = hash(f"{machine_id}_{y_category}_{y_characteristic_id}_{target_month}")
+        random.seed(seed_y)
+        base_y = x_val * 1.5 + random.uniform(-20, 20)  # 相関を持たせる
+        raw_y = [base_y + random.uniform(-15, 15) for _ in range(raw_count)]
+        
+        if aggregation == "平均値":
+            y_val = sum(raw_y) / len(raw_y)
+        elif aggregation == "最大値":
+            y_val = max(raw_y)
+        elif aggregation == "最小値":
+            y_val = min(raw_y)
+        elif aggregation == "合計値":
+            y_val = sum(raw_y)
+        elif aggregation == "カウント":
+            y_val = len(raw_y)
+        else:
+            y_val = sum(raw_y) / len(raw_y)
+        
+        is_selected = selected_machine_ids and machine_id in selected_machine_ids
+        
+        data.append({
+            "machine_id": machine_id,
+            "x": round(x_val, 2),
+            "y": round(y_val, 2),
+            "selected": is_selected,
+        })
+        
+        x_values.append(x_val)
+        y_values.append(y_val)
+    
+    random.seed()
+    
+    # 相関係数を計算
+    n = len(x_values)
+    if n > 1:
+        mean_x = sum(x_values) / n
+        mean_y = sum(y_values) / n
+        cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(x_values, y_values)) / n
+        std_x = (sum((x - mean_x) ** 2 for x in x_values) / n) ** 0.5
+        std_y = (sum((y - mean_y) ** 2 for y in y_values) / n) ** 0.5
+        correlation = cov / (std_x * std_y) if std_x > 0 and std_y > 0 else 0
+    else:
+        correlation = 0
+    
+    return {
+        "data": data,
+        "x_label": x_characteristic_id,
+        "y_label": y_characteristic_id,
+        "correlation": round(correlation, 3),
+    }
+
+
+def generate_boxplot_data(
+    models: list[str],
+    category: str,
+    characteristic_id: str,
+    aggregation: str,
+    target_month: str,
+) -> dict[str, Any]:
+    """
+    箱ひげ図データを生成
+    
+    Returns:
+        {
+            "labels": ["A-1", "A-2", "A-3"],
+            "datasets": [
+                {
+                    "label": "分布",
+                    "data": [
+                        {"min": 20, "q1": 40, "median": 60, "q3": 80, "max": 100, "outliers": [5, 110]},
+                        ...
+                    ]
+                }
+            ]
+        }
+    """
+    labels = []
+    boxplot_data = []
+    
+    for model in models:
+        machines = MACHINES_BY_MODEL.get(model, [])
+        values = []
+        
+        for machine_id in machines:
+            seed = hash(f"{machine_id}_{category}_{characteristic_id}_{target_month}")
+            random.seed(seed)
+            
+            raw_count = random.randint(3, 10)
+            base_value = random.uniform(40, 100)
+            raw_values = [base_value + random.uniform(-25, 25) for _ in range(raw_count)]
+            
+            if aggregation == "平均値":
+                result = sum(raw_values) / len(raw_values)
+            elif aggregation == "最大値":
+                result = max(raw_values)
+            elif aggregation == "最小値":
+                result = min(raw_values)
+            elif aggregation == "合計値":
+                result = sum(raw_values)
+            elif aggregation == "カウント":
+                result = len(raw_values)
+            else:
+                result = sum(raw_values) / len(raw_values)
+            
+            values.append(result)
+        
+        if not values:
+            continue
+        
+        # 統計値を計算
+        sorted_values = sorted(values)
+        n = len(sorted_values)
+        
+        q1_idx = n // 4
+        q3_idx = (3 * n) // 4
+        
+        q1 = sorted_values[q1_idx]
+        median = sorted_values[n // 2]
+        q3 = sorted_values[q3_idx]
+        iqr = q3 - q1
+        
+        # 外れ値判定
+        lower_fence = q1 - 1.5 * iqr
+        upper_fence = q3 + 1.5 * iqr
+        
+        outliers = [v for v in sorted_values if v < lower_fence or v > upper_fence]
+        non_outliers = [v for v in sorted_values if lower_fence <= v <= upper_fence]
+        
+        labels.append(model)
+        boxplot_data.append({
+            "min": round(min(non_outliers) if non_outliers else sorted_values[0], 2),
+            "q1": round(q1, 2),
+            "median": round(median, 2),
+            "q3": round(q3, 2),
+            "max": round(max(non_outliers) if non_outliers else sorted_values[-1], 2),
+            "outliers": [round(v, 2) for v in outliers],
+        })
+    
+    random.seed()
+    
+    return {
+        "labels": labels,
+        "datasets": [
+            {
+                "label": f"{category} - {characteristic_id}",
+                "data": boxplot_data,
+            }
+        ],
+    }
+
 

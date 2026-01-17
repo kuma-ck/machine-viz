@@ -1,19 +1,27 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Machine Viz{% endblock %}</title>
     <meta name="description" content="機器情報可視化Webアプリケーション">
-    
+
     <!-- CSS -->
     <link rel="stylesheet" href="/static/css/style.css">
-    
+
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    
+    <!-- Chart.js Plugins -->
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot@4.2.4/build/index.umd.min.js"></script>
+
     {% block head %}{% endblock %}
 </head>
+
 <body>
     <!-- ナビゲーション -->
     <nav class="navbar">
@@ -46,4 +54,5 @@
     <script src="/static/js/app.js"></script>
     {% block scripts %}{% endblock %}
 </body>
+
 </html>

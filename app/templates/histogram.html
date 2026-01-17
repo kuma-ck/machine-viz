@@ -5,17 +5,17 @@
 {% block content %}
 <div class="page-header">
     <h1 class="page-title">断面データ表示</h1>
-    <p class="page-description">月別の特性値分布をヒストグラムで表示します</p>
+    <p class="page-description">月別の特性値分布をヒストグラム・散布図・箱ひげ図で表示します</p>
 </div>
 
-<div class="histogram-container">
-    <!-- 条件選択 -->
-    <div class="card condition-card">
-        <h2 class="card-title">条件設定</h2>
-        <form id="histogramForm" class="condition-form">
-            <div class="form-section">
-                <h3 class="form-section-title">基本条件</h3>
-                <div class="form-grid">
+<div class="dashboard-layout">
+    <!-- サイドバー（条件設定） -->
+    <aside class="sidebar" id="sidebar">
+        <div class="card condition-card">
+            <h2 class="card-title">条件設定</h2>
+            <form id="histogramForm" class="condition-form">
+                <div class="form-section">
+                    <h3 class="form-section-title">基本条件</h3>
                     <div class="form-group">
                         <label for="hist-series">機種シリーズ</label>
                         <select id="hist-series" class="form-select">
@@ -35,11 +35,9 @@
                         </select>
                     </div>
                 </div>
-            </div>
 
-            <div class="form-section">
-                <h3 class="form-section-title">特性値条件</h3>
-                <div class="form-grid">
+                <div class="form-section">
+                    <h3 class="form-section-title">特性値条件</h3>
                     <div class="form-group">
                         <label for="hist-category">データカテゴリー</label>
                         <select id="hist-category" class="form-select" required>
@@ -59,37 +57,96 @@
                         </select>
                     </div>
                 </div>
-            </div>
 
-            <div class="form-section">
-                <h3 class="form-section-title">グループ比較（オプション）</h3>
-                <p class="form-hint">機番を入力すると、選択機番群とその他の比較ができます</p>
-                <div class="form-group">
-                    <label for="hist-machines">比較対象の機番（カンマまたは改行で区切り）</label>
-                    <textarea id="hist-machines" class="form-textarea" rows="4"
-                        placeholder="例: 651001, 651002, 651003&#10;機番検索ページで選択した機番をペースト可能"></textarea>
+                <!-- 散布図用のX軸設定 -->
+                <div class="form-section" id="scatterSettings" style="display: none;">
+                    <h3 class="form-section-title">散布図 X軸設定</h3>
+                    <div class="form-group">
+                        <label for="scatter-x-category">データカテゴリー</label>
+                        <select id="scatter-x-category" class="form-select">
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="scatter-x-characteristic">特性値ID</label>
+                        <select id="scatter-x-characteristic" class="form-select">
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3 class="form-section-title">グループ比較（オプション）</h3>
+                    <p class="form-hint">機番を入力すると、選択機番群とその他の比較ができます</p>
+                    <div class="form-group">
+                        <label for="hist-machines">比較対象の機番（カンマまたは改行で区切り）</label>
+                        <textarea id="hist-machines" class="form-textarea" rows="3"
+                            placeholder="例: 651001, 651002, 651003"></textarea>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="btn-icon">📊</span>
+                        グラフ表示
+                    </button>
+                </div>
+            </form>
+        </div>
+    </aside>
+
+    <!-- メインチャートエリア -->
+    <div class="main-chart-area">
+        <div class="card chart-card" id="chartCard" style="display: none;">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <h2 class="card-title">分布分析</h2>
+                </div>
+                <div class="result-actions">
+                    <button type="button" class="share-url-btn" id="shareUrlBtn">
+                        🔗 URLをコピー
+                    </button>
+                    <button type="button" id="histToTableBtn" class="btn btn-outline">
+                        表形式で表示 →
+                    </button>
                 </div>
             </div>
 
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">
-                    <span class="btn-icon">📊</span>
-                    ヒストグラム表示
+            <!-- チャート種別タブ -->
+            <div class="chart-type-tabs">
+                <button type="button" class="chart-type-tab active" data-chart-type="histogram">
+                    📊 ヒストグラム
+                </button>
+                <button type="button" class="chart-type-tab" data-chart-type="scatter">
+                    ⚬ 散布図
+                </button>
+                <button type="button" class="chart-type-tab" data-chart-type="boxplot">
+                    📦 箱ひげ図
                 </button>
             </div>
-        </form>
+
+            <!-- チャートコンテナ -->
+            <div class="chart-container chart-container--multi">
+                <canvas id="distributionChart"></canvas>
+            </div>
+        </div>
     </div>
 
-    <!-- グラフ表示 -->
-    <div class="card chart-card" id="histogramCard" style="display: none;">
-        <div class="card-header">
-            <h2 class="card-title">ヒストグラム</h2>
-            <button type="button" id="histToTableBtn" class="btn btn-outline">
-                表形式で表示 →
-            </button>
-        </div>
-        <div class="chart-container">
-            <canvas id="histogramChart"></canvas>
+    <!-- 詳細データエリア -->
+    <div class="data-grid-area" id="dataGridArea" style="display: none;">
+        <div class="card">
+            <h3 class="card-title">選択データ詳細</h3>
+            <div class="table-container">
+                <table class="data-table" id="detailTable">
+                    <thead>
+                        <tr>
+                            <th>機番</th>
+                            <th>値</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detailTableBody"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -98,7 +155,7 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        initHistogramPage();
+        initHistogramPageV2();
     });
 </script>
 {% endblock %}

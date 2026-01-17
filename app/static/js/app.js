@@ -1078,3 +1078,1074 @@ function exportTableToCSV(tableData) {
     link.download = `machine_viz_${tableData.type}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
 }
+
+// ========================================
+// EDA型ダッシュボード - 時系列表示 V2
+// ========================================
+let timeseriesChartV2 = null;
+let overviewChartV2 = null;
+let timeseriesStateV2 = {
+    data: null,
+    annotations: [],
+    zoomRange: null,
+    variables: [],
+};
+
+async function initTimeseriesPageV2() {
+    const form = document.getElementById('timeseriesForm');
+    const machinesTextarea = document.getElementById('ts-machines');
+    const variableList = document.getElementById('variableList');
+    const addVariableBtn = document.getElementById('addVariableBtn');
+    const showAnnotations = document.getElementById('showAnnotations');
+    const toTableBtn = document.getElementById('toTableBtn');
+    const shareUrlBtn = document.getElementById('shareUrlBtn');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('sidebar');
+    const zoomResetBtn = document.getElementById('zoomResetBtn');
+
+    // 初期データ読み込み
+    const [categories, aggregations] = await Promise.all([
+        getCategories(),
+        getAggregations(),
+    ]);
+
+    // 変数テンプレート
+    let variableCounter = 0;
+
+    async function addVariable() {
+        const varIndex = variableList.children.length;
+        if (varIndex >= 2) {
+            alert('変数は最大2つまで追加できます（左軸・右軸各1つ）');
+            return;
+        }
+
+        // 1つ目は左軸、2つ目は右軸
+        const axisValue = varIndex === 0 ? 'left' : 'right';
+        const axisLabel = varIndex === 0 ? '左軸' : '右軸';
+
+        const varId = variableCounter++;
+        const item = document.createElement('div');
+        item.className = 'variable-item';
+        item.dataset.varId = varId;
+        item.dataset.axis = axisValue;
+        item.innerHTML = `
+            <select class="form-select var-category" data-var-id="${varId}">
+                <option value="">カテゴリー</option>
+                ${categories.map(c => `<option value="${c}">${c}</option>`).join('')}
+            </select>
+            <select class="form-select var-characteristic" data-var-id="${varId}">
+                <option value="">特性値ID</option>
+            </select>
+            <span class="axis-label" style="color: var(--color-text-muted); font-size: var(--font-size-sm); padding: 0 8px;">${axisLabel}</span>
+            <button type="button" class="remove-variable-btn" data-var-id="${varId}">✕</button>
+        `;
+
+        variableList.appendChild(item);
+
+        // カテゴリー変更時
+        const categorySelect = item.querySelector('.var-category');
+        const charSelect = item.querySelector('.var-characteristic');
+        categorySelect.addEventListener('change', async () => {
+            if (categorySelect.value) {
+                const chars = await getCharacteristics(categorySelect.value);
+                charSelect.innerHTML = '<option value="">特性値ID</option>' +
+                    chars.map(c => `<option value="${c}">${c}</option>`).join('');
+            } else {
+                charSelect.innerHTML = '<option value="">特性値ID</option>';
+            }
+        });
+
+        // 削除ボタン
+        const removeBtn = item.querySelector('.remove-variable-btn');
+        removeBtn.addEventListener('click', () => {
+            item.remove();
+        });
+    }
+
+    // 初期変数を1つ追加
+    await addVariable();
+
+    // 変数追加ボタン
+    addVariableBtn.addEventListener('click', addVariable);
+
+    // 検索ページから来た場合の初期設定
+    const savedMachines = sessionStorage.getItem('selectedMachines');
+    if (savedMachines) {
+        const machines = JSON.parse(savedMachines);
+        machinesTextarea.value = machines.join(', ');
+        sessionStorage.removeItem('selectedMachines');
+    }
+
+    // URLパラメータから状態を復元
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('machines') || urlParams.has('variables')) {
+        restoreStateFromURL();
+
+        // 変数の復元と自動グラフ表示
+        if (timeseriesStateV2.pendingVariables && timeseriesStateV2.pendingVariables.length > 0) {
+            // 少し待ってから変数を設定してグラフ表示
+            setTimeout(async () => {
+                // 既存の変数をクリア
+                variableList.innerHTML = '';
+
+                // URLから復元した変数を設定
+                for (const varInfo of timeseriesStateV2.pendingVariables) {
+                    const varIndex = variableList.children.length;
+                    if (varIndex >= 2) break;
+
+                    const axisValue = varIndex === 0 ? 'left' : 'right';
+                    const axisLabel = varIndex === 0 ? '左軸' : '右軸';
+
+                    const varId = variableCounter++;
+                    const item = document.createElement('div');
+                    item.className = 'variable-item';
+                    item.dataset.varId = varId;
+                    item.dataset.axis = axisValue;
+
+                    item.innerHTML = `
+                        <select class="form-select var-category" data-var-id="${varId}">
+                            <option value="">カテゴリー</option>
+                            ${categories.map(c => `<option value="${c}" ${c === varInfo.category ? 'selected' : ''}>${c}</option>`).join('')}
+                        </select>
+                        <select class="form-select var-characteristic" data-var-id="${varId}">
+                            <option value="">特性値ID</option>
+                        </select>
+                        <span class="axis-label" style="color: var(--color-text-muted); font-size: var(--font-size-sm); padding: 0 8px;">${axisLabel}</span>
+                        <button type="button" class="remove-variable-btn" data-var-id="${varId}">✕</button>
+                    `;
+
+                    variableList.appendChild(item);
+
+                    // 特性値を設定
+                    if (varInfo.category) {
+                        const chars = await getCharacteristics(varInfo.category);
+                        const charSelect = item.querySelector('.var-characteristic');
+                        charSelect.innerHTML = '<option value="">特性値ID</option>' +
+                            chars.map(c => `<option value="${c}" ${c === varInfo.characteristic_id ? 'selected' : ''}>${c}</option>`).join('');
+                    }
+
+                    // 削除ボタン
+                    const removeBtn = item.querySelector('.remove-variable-btn');
+                    removeBtn.addEventListener('click', () => item.remove());
+
+                    // カテゴリー変更時
+                    const categorySelect = item.querySelector('.var-category');
+                    const charSelect = item.querySelector('.var-characteristic');
+                    categorySelect.addEventListener('change', async () => {
+                        if (categorySelect.value) {
+                            const chars = await getCharacteristics(categorySelect.value);
+                            charSelect.innerHTML = '<option value="">特性値ID</option>' +
+                                chars.map(c => `<option value="${c}">${c}</option>`).join('');
+                        } else {
+                            charSelect.innerHTML = '<option value="">特性値ID</option>';
+                        }
+                    });
+                }
+
+                timeseriesStateV2.pendingVariables = null;
+
+                // グラフ表示
+                await loadTimeseriesData();
+            }, 500);
+        }
+    }
+
+    // フォーム送信
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await loadTimeseriesData();
+    });
+
+    // ズームリセット
+    if (zoomResetBtn) {
+        zoomResetBtn.addEventListener('click', () => {
+            if (timeseriesChartV2) {
+                timeseriesChartV2.resetZoom();
+                document.getElementById('zoomInfo').textContent = '全期間表示';
+            }
+        });
+    }
+
+    // URL共有
+    if (shareUrlBtn) {
+        shareUrlBtn.addEventListener('click', () => {
+            copyCurrentURL();
+        });
+    }
+
+    // 表形式表示への遷移
+    toTableBtn.addEventListener('click', () => {
+        if (timeseriesStateV2.data) {
+            sessionStorage.setItem('tableData', JSON.stringify({
+                type: 'timeseries',
+                data: timeseriesStateV2.data,
+            }));
+            window.location.href = '/table';
+        }
+    });
+
+    async function loadTimeseriesData() {
+        const machineIds = parseMachineIds(machinesTextarea.value);
+        if (machineIds.length === 0) {
+            alert('機番を入力してください');
+            return;
+        }
+        if (machineIds.length > 5) {
+            alert('最大5台まで入力できます');
+            return;
+        }
+
+        // 変数情報を収集
+        const variables = [];
+        const variableItems = variableList.querySelectorAll('.variable-item');
+        variableItems.forEach(item => {
+            const category = item.querySelector('.var-category').value;
+            const characteristic = item.querySelector('.var-characteristic').value;
+            const axis = item.dataset.axis || 'left';
+
+            if (category && characteristic) {
+                variables.push({
+                    category,
+                    characteristic_id: characteristic,
+                    axis,
+                });
+            }
+        });
+
+        if (variables.length === 0) {
+            alert('少なくとも1つの変数を設定してください');
+            return;
+        }
+
+        // 集計方法（最初の変数の設定を使用、または平均値をデフォルト）
+        const aggregation = '平均値';
+
+        // X軸タイプを取得
+        const xAxisType = document.querySelector('input[name="xAxisType"]:checked')?.value || 'time';
+
+        try {
+            // 多変量時系列データを取得
+            const [multiData, annotationsData] = await Promise.all([
+                fetchAPI('/timeseries/multi', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        machine_ids: machineIds,
+                        variables: variables,
+                        aggregation: aggregation,
+                        x_axis_type: xAxisType,
+                    }),
+                }),
+                // 使用回数モードではアノテーション（日付ベース）は表示しない
+                (showAnnotations.checked && xAxisType === 'time') ? fetchAPI('/annotations', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        machine_ids: machineIds,
+                        months: 12,
+                    }),
+                }) : Promise.resolve([]),
+            ]);
+
+            timeseriesStateV2.data = multiData;
+            timeseriesStateV2.annotations = annotationsData;
+            timeseriesStateV2.variables = variables;
+
+            renderTimeseriesChartV2(multiData, annotationsData);
+            showElement('chartCard');
+
+            // URLパラメータを更新
+            updateURLState({
+                machines: machineIds.join(','),
+                variables: JSON.stringify(variables),
+            });
+        } catch (error) {
+            console.error('Error loading timeseries data:', error);
+            alert('データの取得に失敗しました');
+        }
+    }
+}
+
+function renderTimeseriesChartV2(data, annotations = []) {
+    const ctx = document.getElementById('timeseriesChart');
+    const overviewCtx = document.getElementById('overviewChart');
+    if (!ctx) return;
+
+    if (timeseriesChartV2) {
+        timeseriesChartV2.destroy();
+    }
+    if (overviewChartV2) {
+        overviewChartV2.destroy();
+    }
+
+    // データセットを構築
+    const datasets = data.datasets.map((ds, i) => {
+        const colorIndex = i % CHART_COLORS.length;
+        return {
+            label: `${ds.machine_id} - ${ds.variable.characteristic_id}`,
+            data: ds.data,
+            borderColor: CHART_COLORS[colorIndex],
+            backgroundColor: CHART_BG_COLORS[colorIndex],
+            borderWidth: 2,
+            tension: 0.3,
+            fill: false,
+            yAxisID: ds.axis === 'right' ? 'y1' : 'y',
+        };
+    });
+
+    // アノテーション設定
+    const annotationConfig = {};
+    if (annotations.length > 0) {
+        annotations.forEach((ann, i) => {
+            annotationConfig[`line${i}`] = {
+                type: 'line',
+                xMin: ann.xMin,
+                xMax: ann.xMax,
+                borderColor: ann.borderColor,
+                borderWidth: ann.borderWidth,
+                borderDash: ann.borderDash || [],
+                label: {
+                    display: true,
+                    content: ann.label.content,
+                    position: 'start',
+                    backgroundColor: ann.borderColor,
+                    font: { size: 9 },
+                },
+            };
+        });
+    }
+
+    // スケール設定
+    const scales = {
+        x: {
+            grid: { color: 'rgba(0, 0, 0, 0.05)' },
+        },
+        y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            grid: { color: 'rgba(0, 0, 0, 0.05)' },
+            title: {
+                display: true,
+                text: data.scales?.left?.label || '',
+            },
+        },
+    };
+
+    if (data.scales?.right) {
+        scales.y1 = {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            title: {
+                display: true,
+                text: data.scales.right.label,
+            },
+        };
+    }
+
+    // メインチャート
+    timeseriesChartV2 = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: datasets,
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: { position: 'top' },
+                annotation: {
+                    annotations: annotationConfig,
+                },
+                zoom: {
+                    zoom: {
+                        wheel: { enabled: true },
+                        pinch: { enabled: true },
+                        mode: 'x',
+                        onZoomComplete: ({ chart }) => {
+                            updateZoomInfo(chart);
+                        },
+                    },
+                    pan: {
+                        enabled: true,
+                        mode: 'x',
+                    },
+                },
+            },
+            scales: scales,
+        },
+    });
+
+    // 概要チャート（Brush用）
+    if (overviewCtx) {
+        overviewChartV2 = new Chart(overviewCtx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: datasets.map(ds => ({
+                    ...ds,
+                    borderWidth: 1,
+                    pointRadius: 0,
+                })),
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    annotation: { annotations: {} },
+                },
+                scales: {
+                    x: { display: false },
+                    y: { display: false },
+                    y1: { display: false },
+                },
+            },
+        });
+    }
+}
+
+function updateZoomInfo(chart) {
+    const zoomInfo = document.getElementById('zoomInfo');
+    if (!zoomInfo) return;
+
+    const xScale = chart.scales.x;
+    if (xScale) {
+        const min = xScale.min;
+        const max = xScale.max;
+        const labels = chart.data.labels;
+        if (min === 0 && max === labels.length - 1) {
+            zoomInfo.textContent = '全期間表示';
+        } else {
+            const minLabel = labels[Math.max(0, Math.floor(min))] || '';
+            const maxLabel = labels[Math.min(labels.length - 1, Math.ceil(max))] || '';
+            zoomInfo.textContent = `${minLabel} 〜 ${maxLabel}`;
+        }
+    }
+}
+
+
+// ========================================
+// EDA型ダッシュボード - 断面データ表示 V2
+// ========================================
+let distributionChartV2 = null;
+let distributionStateV2 = {
+    data: null,
+    chartType: 'histogram',
+    scatterData: null,
+    boxplotData: null,
+};
+
+async function initHistogramPageV2() {
+    const form = document.getElementById('histogramForm');
+    const seriesSelect = document.getElementById('hist-series');
+    const modelSelect = document.getElementById('hist-model');
+    const monthSelect = document.getElementById('hist-month');
+    const categorySelect = document.getElementById('hist-category');
+    const characteristicSelect = document.getElementById('hist-characteristic');
+    const aggregationSelect = document.getElementById('hist-aggregation');
+    const machinesTextarea = document.getElementById('hist-machines');
+    const toTableBtn = document.getElementById('histToTableBtn');
+    const shareUrlBtn = document.getElementById('shareUrlBtn');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('sidebar');
+    const chartTypeTabs = document.querySelectorAll('.chart-type-tab');
+    const scatterSettings = document.getElementById('scatterSettings');
+    const scatterXCategory = document.getElementById('scatter-x-category');
+    const scatterXCharacteristic = document.getElementById('scatter-x-characteristic');
+
+    // 初期データ読み込み
+    const [series, categories, aggregations, months] = await Promise.all([
+        getSeries(),
+        getCategories(),
+        getAggregations(),
+        getMonths(),
+    ]);
+
+    populateSelect('hist-series', series);
+    populateSelect('hist-category', categories);
+    populateSelect('hist-aggregation', aggregations);
+    populateSelect('hist-month', months);
+
+    // 散布図用のカテゴリー
+    if (scatterXCategory) {
+        populateSelect('scatter-x-category', categories);
+    }
+
+    // シリーズ変更時
+    seriesSelect.addEventListener('change', async () => {
+        if (seriesSelect.value) {
+            const models = await getModels(seriesSelect.value);
+            populateSelect('hist-model', models);
+        } else {
+            populateSelect('hist-model', []);
+        }
+    });
+
+    // カテゴリー変更時
+    categorySelect.addEventListener('change', async () => {
+        if (categorySelect.value) {
+            const chars = await getCharacteristics(categorySelect.value);
+            populateSelect('hist-characteristic', chars);
+        } else {
+            populateSelect('hist-characteristic', []);
+        }
+    });
+
+    // 散布図X軸カテゴリー変更時
+    if (scatterXCategory) {
+        scatterXCategory.addEventListener('change', async () => {
+            if (scatterXCategory.value) {
+                const chars = await getCharacteristics(scatterXCategory.value);
+                populateSelect('scatter-x-characteristic', chars);
+            } else {
+                populateSelect('scatter-x-characteristic', []);
+            }
+        });
+    }
+
+    // チャート種別タブ
+    chartTypeTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            chartTypeTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            distributionStateV2.chartType = tab.dataset.chartType;
+
+            // 散布図設定の表示/非表示
+            if (scatterSettings) {
+                scatterSettings.style.display = distributionStateV2.chartType === 'scatter' ? 'block' : 'none';
+            }
+
+            // データがあれば再描画
+            if (distributionStateV2.data) {
+                renderDistributionChart();
+            }
+        });
+    });
+
+    // 検索ページから来た場合
+    const savedMachines = sessionStorage.getItem('selectedMachines');
+    if (savedMachines) {
+        const machines = JSON.parse(savedMachines);
+        machinesTextarea.value = machines.join(', ');
+        sessionStorage.removeItem('selectedMachines');
+    }
+
+    // URLパラメータから状態を復元し、パラメータがあれば自動でグラフ表示
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('model') || urlParams.has('category')) {
+        const model = urlParams.get('model');
+        const category = urlParams.get('category');
+        const characteristic = urlParams.get('characteristic');
+        const aggregation = urlParams.get('aggregation');
+        const month = urlParams.get('month');
+        const machines = urlParams.get('machines');
+        const chartType = urlParams.get('chartType');
+
+        // 機番を復元
+        if (machines && machinesTextarea) {
+            machinesTextarea.value = machines.replace(/,/g, ', ');
+        }
+
+        // シリーズを復元（モデルから推測）
+        if (model) {
+            const prefix = model.charAt(0);
+            const seriesMap = { 'A': 'SERIES-1', 'B': 'SERIES-2', 'C': 'SERIES-3' };
+            const series = seriesMap[prefix] || 'SERIES-1';
+
+            const seriesSelect = document.getElementById('hist-series');
+            if (seriesSelect) {
+                seriesSelect.value = series;
+                // モデルリストを取得して設定
+                getModels(series).then(models => {
+                    populateSelect('hist-model', models);
+                    const modelSelect = document.getElementById('hist-model');
+                    if (modelSelect) {
+                        modelSelect.value = model;
+                    }
+                });
+            }
+        }
+
+        // カテゴリーと特性値を復元
+        if (category) {
+            const categorySelect = document.getElementById('hist-category');
+            if (categorySelect) {
+                categorySelect.value = category;
+                // 特性値リストを取得して設定
+                getCharacteristics(category).then(chars => {
+                    populateSelect('hist-characteristic', chars);
+                    if (characteristic) {
+                        const charSelect = document.getElementById('hist-characteristic');
+                        if (charSelect) {
+                            charSelect.value = characteristic;
+                        }
+                    }
+                });
+            }
+        }
+
+        // 集計方法と月を復元
+        if (aggregation) {
+            const aggSelect = document.getElementById('hist-aggregation');
+            if (aggSelect) aggSelect.value = aggregation;
+        }
+        if (month) {
+            const monthSelect = document.getElementById('hist-month');
+            if (monthSelect) monthSelect.value = month;
+        }
+
+        // チャート種別を復元
+        if (chartType) {
+            distributionStateV2.chartType = chartType;
+            const tab = document.querySelector(`.chart-type-tab[data-chart-type="${chartType}"]`);
+            if (tab) {
+                document.querySelectorAll('.chart-type-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+            }
+            // 散布図設定の表示/非表示
+            if (scatterSettings) {
+                scatterSettings.style.display = chartType === 'scatter' ? 'block' : 'none';
+            }
+        }
+
+        // 少し待ってからグラフ表示（ドロップダウンの読み込み完了を待つ）
+        setTimeout(async () => {
+            await loadDistributionData();
+        }, 800);
+    }
+
+    // フォーム送信
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await loadDistributionData();
+    });
+
+    // URL共有
+    if (shareUrlBtn) {
+        shareUrlBtn.addEventListener('click', () => {
+            copyCurrentURL();
+        });
+    }
+
+    // 表形式表示への遷移
+    toTableBtn.addEventListener('click', () => {
+        if (distributionStateV2.data) {
+            sessionStorage.setItem('tableData', JSON.stringify({
+                type: 'histogram',
+                data: distributionStateV2.data,
+            }));
+            window.location.href = '/table';
+        }
+    });
+
+    async function loadDistributionData() {
+        const selectedMachines = parseMachineIds(machinesTextarea.value);
+
+        const baseParams = {
+            model: modelSelect.value,
+            category: categorySelect.value,
+            characteristic_id: characteristicSelect.value,
+            aggregation: aggregationSelect.value,
+            target_month: monthSelect.value,
+        };
+
+        if (!baseParams.model || !baseParams.category || !baseParams.characteristic_id ||
+            !baseParams.aggregation || !baseParams.target_month) {
+            alert('必須条件をすべて選択してください');
+            return;
+        }
+
+        try {
+            // ヒストグラムデータを取得
+            const histogramData = await fetchAPI('/histogram', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ...baseParams,
+                    selected_machine_ids: selectedMachines.length > 0 ? selectedMachines : null,
+                }),
+            });
+
+            distributionStateV2.data = histogramData;
+
+            // 散布図データを取得（散布図タブ用）
+            if (scatterXCategory?.value && scatterXCharacteristic?.value) {
+                const scatterData = await fetchAPI('/scatter', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        ...baseParams,
+                        x_category: scatterXCategory.value,
+                        x_characteristic_id: scatterXCharacteristic.value,
+                        y_category: baseParams.category,
+                        y_characteristic_id: baseParams.characteristic_id,
+                        selected_machine_ids: selectedMachines.length > 0 ? selectedMachines : null,
+                    }),
+                });
+                distributionStateV2.scatterData = scatterData;
+            }
+
+            // 箱ひげ図データを取得
+            const allModels = await getModels(seriesSelect.value);
+            if (allModels.length > 0) {
+                const boxplotData = await fetchAPI('/boxplot', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        models: allModels,
+                        category: baseParams.category,
+                        characteristic_id: baseParams.characteristic_id,
+                        aggregation: baseParams.aggregation,
+                        target_month: baseParams.target_month,
+                    }),
+                });
+                distributionStateV2.boxplotData = boxplotData;
+            }
+
+            renderDistributionChart();
+            showElement('chartCard');
+
+            // URLパラメータを更新
+            updateURLState({
+                model: baseParams.model,
+                category: baseParams.category,
+                characteristic: baseParams.characteristic_id,
+                aggregation: baseParams.aggregation,
+                month: baseParams.target_month,
+                machines: selectedMachines.join(','),
+                chartType: distributionStateV2.chartType,
+            });
+        } catch (error) {
+            console.error('Error loading distribution data:', error);
+            alert('データの取得に失敗しました');
+        }
+    }
+}
+
+function renderDistributionChart() {
+    const ctx = document.getElementById('distributionChart');
+    if (!ctx) return;
+
+    if (distributionChartV2) {
+        distributionChartV2.destroy();
+    }
+
+    const chartType = distributionStateV2.chartType;
+
+    if (chartType === 'histogram') {
+        renderHistogramChartV2(ctx, distributionStateV2.data);
+    } else if (chartType === 'scatter') {
+        renderScatterChartV2(ctx, distributionStateV2.scatterData || distributionStateV2.data);
+    } else if (chartType === 'boxplot') {
+        renderBoxplotChartV2(ctx, distributionStateV2.boxplotData);
+    }
+}
+
+function renderHistogramChartV2(ctx, data) {
+    if (!data) return;
+
+    const labels = [];
+    for (let i = 0; i < data.bins.length - 1; i++) {
+        labels.push(`${data.bins[i]}-${data.bins[i + 1]}`);
+    }
+
+    const toRelativeFrequency = (counts) => {
+        const total = counts.reduce((sum, c) => sum + c, 0);
+        if (total === 0) return counts.map(() => 0);
+        return counts.map(c => (c / total) * 100);
+    };
+
+    const datasets = [];
+
+    if (data.selected_group && data.other_group) {
+        datasets.push({
+            label: `${data.selected_group.label}（相対頻度）`,
+            data: toRelativeFrequency(data.selected_group.counts),
+            backgroundColor: CHART_COLORS[0],
+            borderColor: CHART_COLORS[0],
+            borderWidth: 1,
+        });
+        datasets.push({
+            label: `${data.other_group.label}（相対頻度）`,
+            data: toRelativeFrequency(data.other_group.counts),
+            backgroundColor: CHART_COLORS[1],
+            borderColor: CHART_COLORS[1],
+            borderWidth: 1,
+        });
+    } else if (data.all_group) {
+        datasets.push({
+            label: `${data.all_group.label}（相対頻度）`,
+            data: toRelativeFrequency(data.all_group.counts),
+            backgroundColor: CHART_COLORS[0],
+            borderColor: CHART_COLORS[0],
+            borderWidth: 1,
+        });
+    }
+
+    distributionChartV2 = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `${context.dataset.label}: ${context.raw.toFixed(1)}%`,
+                    },
+                },
+            },
+            scales: {
+                x: { title: { display: true, text: '値の範囲' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                y: { title: { display: true, text: '相対頻度（%）' }, beginAtZero: true, max: 100, grid: { color: 'rgba(0, 0, 0, 0.05)' }, ticks: { callback: (v) => `${v}%` } },
+            },
+        },
+    });
+}
+
+function renderScatterChartV2(ctx, data) {
+    if (!data || !data.data) {
+        // ヒストグラムデータから散布図を生成
+        if (distributionStateV2.data?.raw_data) {
+            const rawData = distributionStateV2.data.raw_data;
+            const scatterData = rawData.map((d, i) => ({
+                x: i,
+                y: d.value,
+                machine_id: d.machine_id,
+            }));
+
+            distributionChartV2 = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: '機番別値',
+                        data: scatterData,
+                        backgroundColor: CHART_COLORS[0],
+                        pointRadius: 4,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `機番: ${context.raw.machine_id}, 値: ${context.raw.y}`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'インデックス' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                        y: { title: { display: true, text: '値' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                    },
+                },
+            });
+        }
+        return;
+    }
+
+    const scatterData = data.data.map(d => ({
+        x: d.x,
+        y: d.y,
+        machine_id: d.machine_id,
+        selected: d.selected,
+    }));
+
+    const selectedData = scatterData.filter(d => d.selected);
+    const otherData = scatterData.filter(d => !d.selected);
+
+    const datasets = [];
+    if (selectedData.length > 0) {
+        datasets.push({
+            label: '選択機番',
+            data: selectedData,
+            backgroundColor: CHART_COLORS[0],
+            pointRadius: 6,
+        });
+    }
+    datasets.push({
+        label: selectedData.length > 0 ? 'その他' : '全機番',
+        data: selectedData.length > 0 ? otherData : scatterData,
+        backgroundColor: selectedData.length > 0 ? CHART_COLORS[1] : CHART_COLORS[0],
+        pointRadius: 4,
+    });
+
+    distributionChartV2 = new Chart(ctx, {
+        type: 'scatter',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `機番: ${context.raw.machine_id}, X: ${context.raw.x}, Y: ${context.raw.y}`,
+                    },
+                },
+                title: {
+                    display: true,
+                    text: `相関係数: ${data.correlation}`,
+                },
+            },
+            scales: {
+                x: { title: { display: true, text: data.x_label || 'X軸' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                y: { title: { display: true, text: data.y_label || 'Y軸' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+            },
+        },
+    });
+}
+
+function renderBoxplotChartV2(ctx, data) {
+    if (!data) return;
+
+    // Chart.js boxplot plugin format
+    const boxplotData = data.datasets[0].data.map(d => ({
+        min: d.min,
+        q1: d.q1,
+        median: d.median,
+        q3: d.q3,
+        max: d.max,
+        outliers: d.outliers || [],
+    }));
+
+    distributionChartV2 = new Chart(ctx, {
+        type: 'boxplot',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label: data.datasets[0].label,
+                data: boxplotData,
+                backgroundColor: CHART_BG_COLORS[0],
+                borderColor: CHART_COLORS[0],
+                borderWidth: 2,
+                outlierBackgroundColor: CHART_COLORS[2],
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+            },
+            scales: {
+                x: { title: { display: true, text: '機種番号' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                y: { title: { display: true, text: '値' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+            },
+        },
+    });
+}
+
+
+// ========================================
+// URL状態管理
+// ========================================
+function updateURLState(params) {
+    const url = new URL(window.location);
+    Object.keys(params).forEach(key => {
+        if (params[key]) {
+            url.searchParams.set(key, params[key]);
+        } else {
+            url.searchParams.delete(key);
+        }
+    });
+    window.history.replaceState({}, '', url);
+}
+
+function restoreStateFromURL() {
+    const params = new URLSearchParams(window.location.search);
+
+    // 機番の復元
+    const machines = params.get('machines');
+    if (machines) {
+        const machinesInput = document.getElementById('ts-machines') || document.getElementById('hist-machines');
+        if (machinesInput) {
+            machinesInput.value = machines.replace(/,/g, ', ');
+        }
+    }
+
+    // シリーズの復元（モデルから推測も可能）
+    let series = params.get('series');
+    const model = params.get('model');
+    if (!series && model) {
+        // モデルからシリーズを推測（A-1 → SERIES-1, B-1 → SERIES-2, C-1 → SERIES-3）
+        const prefix = model.charAt(0);
+        const seriesMap = { 'A': 'SERIES-1', 'B': 'SERIES-2', 'C': 'SERIES-3' };
+        series = seriesMap[prefix] || 'SERIES-1';
+    }
+    if (series) {
+        const seriesEl = document.getElementById('hist-series');
+        if (seriesEl) {
+            seriesEl.value = series;
+            seriesEl.dispatchEvent(new Event('change'));
+        }
+    }
+
+    // フォーム要素の復元
+    const mappings = {
+        'model': 'hist-model',
+        'category': 'hist-category',
+        'characteristic': 'hist-characteristic',
+        'aggregation': 'hist-aggregation',
+        'month': 'hist-month',
+        'chartType': null,
+    };
+
+    Object.keys(mappings).forEach(key => {
+        const value = params.get(key);
+        if (value && mappings[key]) {
+            const el = document.getElementById(mappings[key]);
+            if (el) {
+                el.value = value;
+                el.dispatchEvent(new Event('change'));
+            }
+        }
+    });
+
+    // チャート種別の復元
+    const chartType = params.get('chartType');
+    if (chartType) {
+        distributionStateV2.chartType = chartType;
+        const tab = document.querySelector(`.chart-type-tab[data-chart-type="${chartType}"]`);
+        if (tab) {
+            document.querySelectorAll('.chart-type-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+        }
+    }
+
+    // 時系列用変数の復元
+    const variablesParam = params.get('variables');
+    if (variablesParam) {
+        try {
+            const variables = JSON.parse(variablesParam);
+            // 時系列の変数復元は別途実行（initTimeseriesV2で処理）
+            timeseriesStateV2.pendingVariables = variables;
+        } catch (e) {
+            console.error('Failed to parse variables from URL:', e);
+        }
+    }
+}
+
+function copyCurrentURL() {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('shareUrlBtn');
+        if (btn) {
+            const originalText = btn.textContent;
+            btn.textContent = '✓ コピーしました';
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.classList.remove('copied');
+            }, 2000);
+        }
+    }).catch(() => {
+        prompt('以下のURLをコピーしてください:', url);
+    });
+}
+

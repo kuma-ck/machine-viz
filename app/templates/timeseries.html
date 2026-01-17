@@ -8,64 +8,131 @@
     <p class="page-description">機番ごとの特性値推移を時系列で可視化します（最大5台）</p>
 </div>
 
-<div class="timeseries-container">
-    <!-- 条件選択 -->
-    <div class="card condition-card">
-        <h2 class="card-title">条件設定</h2>
-        <form id="timeseriesForm" class="condition-form">
-            <div class="form-section">
-                <h3 class="form-section-title">機番条件</h3>
-                <div class="form-group">
-                    <label for="ts-machines">機番を入力（最大5台、カンマまたは改行で区切り）</label>
-                    <textarea id="ts-machines" class="form-textarea" rows="4"
-                        placeholder="例: 651001, 651002, 651003&#10;または&#10;651001&#10;651002&#10;651003"></textarea>
-                    <p class="form-hint">機番検索ページで選択した機番をコピーしてペーストできます</p>
+<div class="dashboard-layout">
+    <!-- サイドバー（条件設定） -->
+    <aside class="sidebar" id="sidebar">
+        <div class="card condition-card">
+            <h2 class="card-title">条件設定</h2>
+            <form id="timeseriesForm" class="condition-form">
+                <div class="form-section">
+                    <h3 class="form-section-title">機番条件</h3>
+                    <div class="form-group">
+                        <label for="ts-machines">機番を入力（最大5台、カンマまたは改行で区切り）</label>
+                        <textarea id="ts-machines" class="form-textarea" rows="3"
+                            placeholder="例: 651001, 651002, 651003"></textarea>
+                        <p class="form-hint">機番検索ページで選択した機番をペースト可能</p>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3 class="form-section-title">X軸の種類</h3>
+                    <div class="form-group">
+                        <div class="radio-group">
+                            <label class="radio-item">
+                                <input type="radio" name="xAxisType" id="xAxisTime" value="time" checked>
+                                <span>時間（月次）</span>
+                            </label>
+                            <label class="radio-item">
+                                <input type="radio" name="xAxisType" id="xAxisUsage" value="usage">
+                                <span>使用回数</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3 class="form-section-title">表示する変数</h3>
+                    <div class="variable-list" id="variableList">
+                        <!-- 変数アイテムがここに追加される -->
+                    </div>
+                    <button type="button" class="add-variable-btn" id="addVariableBtn">
+                        <span>＋</span> 変数を追加
+                    </button>
+                </div>
+
+                <div class="form-section">
+                    <h3 class="form-section-title">アノテーション</h3>
+                    <div class="form-group">
+                        <label class="checkbox-item">
+                            <input type="checkbox" id="showAnnotations" checked>
+                            <span>イベント情報を表示</span>
+                        </label>
+                    </div>
+                    <div class="annotation-list" id="annotationLegend">
+                        <span class="annotation-item">
+                            <span class="annotation-icon annotation-icon--firmware"></span>
+                            FW更新
+                        </span>
+                        <span class="annotation-item">
+                            <span class="annotation-icon annotation-icon--parts"></span>
+                            部品交換
+                        </span>
+                        <span class="annotation-item">
+                            <span class="annotation-icon annotation-icon--maintenance"></span>
+                            メンテナンス
+                        </span>
+                        <span class="annotation-item">
+                            <span class="annotation-icon annotation-icon--error"></span>
+                            エラー発生
+                        </span>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="btn-icon">📈</span>
+                        グラフ表示
+                    </button>
+                </div>
+            </form>
+        </div>
+    </aside>
+
+    <!-- メインチャートエリア -->
+    <div class="main-chart-area">
+        <div class="card chart-card" id="chartCard" style="display: none;">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <h2 class="card-title">時系列グラフ</h2>
+                    <div class="zoom-controls">
+                        <button type="button" class="zoom-btn" id="zoomResetBtn" title="ズームリセット">⟲</button>
+                        <span class="zoom-info" id="zoomInfo">全期間表示</span>
+                    </div>
+                </div>
+                <div class="result-actions">
+                    <button type="button" class="share-url-btn" id="shareUrlBtn">
+                        🔗 URLをコピー
+                    </button>
+                    <button type="button" id="toTableBtn" class="btn btn-outline">
+                        表形式で表示 →
+                    </button>
                 </div>
             </div>
 
-            <div class="form-section">
-                <h3 class="form-section-title">特性値条件</h3>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="ts-category">データカテゴリー</label>
-                        <select id="ts-category" class="form-select">
-                            <option value="">選択してください</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="ts-characteristic">特性値ID</label>
-                        <select id="ts-characteristic" class="form-select">
-                            <option value="">選択してください</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="ts-aggregation">集計方法</label>
-                        <select id="ts-aggregation" class="form-select">
-                            <option value="">選択してください</option>
-                        </select>
-                    </div>
-                </div>
+            <!-- 概要チャート（Brush & Zoom用） -->
+            <div class="overview-chart-container">
+                <canvas id="overviewChart"></canvas>
             </div>
 
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">
-                    <span class="btn-icon">📈</span>
-                    グラフ表示
-                </button>
+            <!-- メインチャート -->
+            <div class="chart-container chart-container--multi">
+                <canvas id="timeseriesChart"></canvas>
             </div>
-        </form>
+        </div>
     </div>
 
-    <!-- グラフ表示 -->
-    <div class="card chart-card" id="chartCard" style="display: none;">
-        <div class="card-header">
-            <h2 class="card-title">時系列グラフ</h2>
-            <button type="button" id="toTableBtn" class="btn btn-outline">
-                表形式で表示 →
-            </button>
-        </div>
-        <div class="chart-container">
-            <canvas id="timeseriesChart"></canvas>
+    <!-- 詳細データエリア（将来拡張用） -->
+    <div class="data-grid-area" id="dataGridArea" style="display: none;">
+        <div class="card">
+            <h3 class="card-title">詳細データ</h3>
+            <div class="table-container">
+                <table class="data-table" id="detailTable">
+                    <thead>
+                        <tr id="detailTableHead"></tr>
+                    </thead>
+                    <tbody id="detailTableBody"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -74,7 +141,7 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        initTimeseriesPage();
+        initTimeseriesPageV2();
     });
 </script>
 {% endblock %}

@@ -692,6 +692,31 @@ body {
     font-size: var(--font-size-sm);
 }
 
+.radio-group {
+    display: flex;
+    gap: var(--spacing-md);
+}
+
+.radio-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.radio-item:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.radio-item input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-accent-primary);
+}
+
 .placeholder-text {
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
@@ -1004,4 +1029,368 @@ body {
         width: 100%;
         justify-content: center;
     }
+
+    /* Dashboard responsive */
+    .dashboard-layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+    }
+
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+        max-height: none;
+    }
+
+    .sidebar--collapsed {
+        display: none;
+    }
+}
+
+/* ========================================
+   ダッシュボードレイアウト（EDA型）
+   ======================================== */
+.dashboard-layout {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: 1fr auto;
+    gap: var(--spacing-md);
+    min-height: calc(100vh - 180px);
+}
+
+/* サイドバー（条件設定エリア） */
+.sidebar {
+    width: 380px;
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
+    grid-row: 1 / 3;
+}
+
+.sidebar .card {
+    margin-bottom: var(--spacing-md);
+}
+
+/* メインチャートエリア */
+.main-chart-area {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+/* 詳細データエリア */
+.data-grid-area {
+    grid-column: 2;
+}
+
+/* ========================================
+   多軸チャート
+   ======================================== */
+.chart-container--multi {
+    height: 500px;
+}
+
+.overview-chart-container {
+    height: 100px;
+    margin-bottom: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: var(--spacing-sm);
+    background: var(--color-bg-tertiary);
+}
+
+.overview-chart-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* 変数追加UI */
+.variable-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.variable-item {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto auto;
+    gap: var(--spacing-sm);
+    align-items: center;
+    padding: var(--spacing-sm);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--border-radius-sm);
+    border-left: 3px solid var(--color-accent-primary);
+}
+
+.variable-item:nth-child(2) {
+    border-left-color: var(--color-accent-tertiary);
+}
+
+.variable-item:nth-child(3) {
+    border-left-color: var(--color-success);
+}
+
+.variable-item:nth-child(4) {
+    border-left-color: var(--color-warning);
+}
+
+.variable-item:nth-child(5) {
+    border-left-color: var(--color-accent-secondary);
+}
+
+.variable-item .form-select {
+    min-width: 120px;
+}
+
+.axis-selector {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: center;
+    font-size: var(--font-size-sm);
+}
+
+.axis-selector label {
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background: var(--color-bg-secondary);
+    transition: all var(--transition-fast);
+}
+
+.axis-selector input[type="radio"] {
+    display: none;
+}
+
+.axis-selector input[type="radio"]:checked+label {
+    background: var(--color-accent-primary);
+    color: white;
+}
+
+.add-variable-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: transparent;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius-sm);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    width: 100%;
+    justify-content: center;
+}
+
+.add-variable-btn:hover {
+    border-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.remove-variable-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.remove-variable-btn:hover {
+    border-color: var(--color-error);
+    color: var(--color-error);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* ========================================
+   チャート種別タブ
+   ======================================== */
+.chart-type-tabs {
+    display: flex;
+    gap: 2px;
+    background: var(--color-bg-tertiary);
+    padding: 4px;
+    border-radius: var(--border-radius-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.chart-type-tab {
+    flex: 1;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: transparent;
+    border: none;
+    border-radius: calc(var(--border-radius-sm) - 2px);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.chart-type-tab:hover {
+    color: var(--color-text-primary);
+}
+
+.chart-type-tab.active {
+    background: var(--color-bg-card);
+    color: var(--color-accent-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* ========================================
+   アノテーション
+   ======================================== */
+.annotation-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.annotation-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 4px 10px;
+    background: var(--color-bg-tertiary);
+    border-radius: 9999px;
+    font-size: var(--font-size-xs);
+}
+
+.annotation-icon {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.annotation-icon--firmware {
+    background: var(--color-info);
+}
+
+.annotation-icon--parts {
+    background: var(--color-warning);
+}
+
+.annotation-icon--maintenance {
+    background: var(--color-success);
+}
+
+.annotation-icon--error {
+    background: var(--color-error);
+}
+
+/* ========================================
+   散布図設定
+   ======================================== */
+.scatter-config {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.scatter-axis-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+/* ========================================
+   URL共有ボタン
+   ======================================== */
+.share-url-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 6px 12px;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.share-url-btn:hover {
+    border-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
+}
+
+.share-url-btn.copied {
+    background: var(--color-success);
+    color: white;
+    border-color: var(--color-success);
+}
+
+/* ========================================
+   ズームコントロール
+   ======================================== */
+.zoom-controls {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: center;
+}
+
+.zoom-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.zoom-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
+}
+
+.zoom-info {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    min-width: 100px;
+    text-align: center;
+}
+
+/* ========================================
+   データポイントツールチップ
+   ======================================== */
+.data-point-tooltip {
+    position: absolute;
+    background: var(--color-bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    pointer-events: none;
+    font-size: var(--font-size-sm);
+}
+
+.data-point-tooltip-title {
+    font-weight: 600;
+    margin-bottom: var(--spacing-xs);
+}
+
+.data-point-tooltip-value {
+    color: var(--color-text-secondary);
 }
