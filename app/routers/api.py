@@ -88,6 +88,19 @@ class BoxplotRequest(BaseModel):
     target_month: str
 
 
+class DistributionBoxplotRequest(BaseModel):
+    """分布傾向箱ひげ図リクエスト"""
+    model: str
+    x_axis_type: str  # "usage" | "mfg_month"
+    bin_method: str = "equal_width"  # "equal_width" | "quantile"
+    bin_count: int = 5
+    category: str
+    characteristic_id: str
+    aggregation: str
+    selected_machine_ids: list[str] | None = None
+    chart_type: str = "boxplot"  # "boxplot" | "line"
+
+
 class AnnotationsRequest(BaseModel):
     """アノテーションリクエスト"""
     machine_ids: list[str]
@@ -234,4 +247,20 @@ def get_boxplot(req: BoxplotRequest) -> dict[str, Any]:
         characteristic_id=req.characteristic_id,
         aggregation=req.aggregation,
         target_month=req.target_month,
+    )
+
+
+@router.post("/distribution-boxplot")
+def get_distribution_boxplot(req: DistributionBoxplotRequest) -> dict[str, Any]:
+    """分布傾向箱ひげ図データを取得"""
+    return data_service.get_distribution_boxplot(
+        model=req.model,
+        x_axis_type=req.x_axis_type,
+        bin_method=req.bin_method,
+        bin_count=req.bin_count,
+        category=req.category,
+        characteristic_id=req.characteristic_id,
+        aggregation=req.aggregation,
+        selected_machine_ids=req.selected_machine_ids,
+        chart_type=req.chart_type,
     )

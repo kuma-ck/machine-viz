@@ -1539,6 +1539,7 @@ let distributionStateV2 = {
     chartType: 'histogram',
     scatterData: null,
     boxplotData: null,
+    distributionData: null,
 };
 
 async function initHistogramPageV2() {
@@ -1609,6 +1610,20 @@ async function initHistogramPageV2() {
         });
     }
 
+    // 分布傾向設定要素
+    const distributionSettings = document.getElementById('distributionSettings');
+    const binMethodGroup = document.getElementById('binMethodGroup');
+    const binCountGroup = document.getElementById('binCountGroup');
+
+    // X軸タイプ変更時（製造月の場合はビン設定を非表示）
+    document.querySelectorAll('input[name="dist-x-axis-type"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            const isMfgMonth = radio.value === 'mfg_month' && radio.checked;
+            if (binMethodGroup) binMethodGroup.style.display = isMfgMonth ? 'none' : 'block';
+            if (binCountGroup) binCountGroup.style.display = isMfgMonth ? 'none' : 'block';
+        });
+    });
+
     // チャート種別タブ
     chartTypeTabs.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -1619,6 +1634,11 @@ async function initHistogramPageV2() {
             // 散布図設定の表示/非表示
             if (scatterSettings) {
                 scatterSettings.style.display = distributionStateV2.chartType === 'scatter' ? 'block' : 'none';
+            }
+
+            // 分布傾向設定の表示/非表示
+            if (distributionSettings) {
+                distributionSettings.style.display = distributionStateV2.chartType === 'distribution' ? 'block' : 'none';
             }
 
             // データがあれば再描画
@@ -1805,6 +1825,28 @@ async function initHistogramPageV2() {
                 distributionStateV2.boxplotData = boxplotData;
             }
 
+            // 分布傾向データを取得
+            const xAxisType = document.querySelector('input[name="dist-x-axis-type"]:checked')?.value || 'usage';
+            const binMethod = document.querySelector('input[name="dist-bin-method"]:checked')?.value || 'equal_width';
+            const binCount = parseInt(document.getElementById('dist-bin-count')?.value || '10');
+            const distChartType = document.querySelector('input[name="dist-chart-type"]:checked')?.value || 'boxplot';
+
+            const distributionData = await fetchAPI('/distribution-boxplot', {
+                method: 'POST',
+                body: JSON.stringify({
+                    model: baseParams.model,
+                    x_axis_type: xAxisType,
+                    bin_method: binMethod,
+                    bin_count: binCount,
+                    category: baseParams.category,
+                    characteristic_id: baseParams.characteristic_id,
+                    aggregation: baseParams.aggregation,
+                    selected_machine_ids: selectedMachines.length > 0 ? selectedMachines : null,
+                    chart_type: distChartType,
+                }),
+            });
+            distributionStateV2.distributionData = distributionData;
+
             renderDistributionChart();
             showElement('chartCard');
 
@@ -1841,6 +1883,8 @@ function renderDistributionChart() {
         renderScatterChartV2(ctx, distributionStateV2.scatterData || distributionStateV2.data);
     } else if (chartType === 'boxplot') {
         renderBoxplotChartV2(ctx, distributionStateV2.boxplotData);
+    } else if (chartType === 'distribution') {
+        renderDistributionBoxplotChart(ctx, distributionStateV2.distributionData);
     }
 }
 
@@ -2041,6 +2085,166 @@ function renderBoxplotChartV2(ctx, data) {
     });
 }
 
+
+function renderDistributionBoxplotChart(ctx, data) {
+    if (!data || !data.datasets || data.datasets.length === 0) return;
+
+    const chartType = data.chart_type || 'boxplot';
+
+    if (chartType === 'line') {
+        // リボンプロット（平均線＋95%パーセンタイル帯）
+        const datasets = [];
+
+        data.datasets.forEach((ds, idx) => {
+            const means = ds.data.map(d => d.mean);
+            const upperBound = ds.data.map(d => d.p97_5 || d.mean + d.std);  // 97.5パーセンタイル
+            const lowerBound = ds.data.map(d => d.p2_5 || d.mean - d.std);   // 2.5パーセンタイル
+
+            const color = ds.group === 'selected' ? CHART_COLORS[0] :
+                ds.group === 'other' ? CHART_COLORS[1] : CHART_COLORS[idx];
+            const bgColor = ds.group === 'selected' ? 'rgba(99, 102, 241, 0.2)' :
+                ds.group === 'other' ? 'rgba(236, 72, 153, 0.2)' : 'rgba(99, 102, 241, 0.2)';
+
+            // 上限ライン（97.5パーセンタイル）
+            datasets.push({
+                label: `${ds.label} P97.5`,
+                data: upperBound,
+                borderColor: color,
+                borderWidth: 1,
+                borderDash: [2, 2],
+                pointRadius: 0,
+                fill: false,
+            });
+
+            // 平均ライン
+            datasets.push({
+                label: ds.label,
+                data: means,
+                borderColor: color,
+                backgroundColor: color,
+                borderWidth: 2,
+                pointRadius: 4,
+                pointBackgroundColor: color,
+                fill: false,
+                tension: 0.1,
+            });
+
+            // 下限ライン（2.5パーセンタイル、上限との間を塗りつぶし）
+            datasets.push({
+                label: `${ds.label} P2.5`,
+                data: lowerBound,
+                borderColor: color,
+                borderWidth: 1,
+                borderDash: [2, 2],
+                pointRadius: 0,
+                fill: '-2',  // 2つ前のデータセット（上限）との間を塗りつぶし
+                backgroundColor: bgColor,
+            });
+        });
+
+        distributionChartV2 = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: datasets.filter(ds => !ds.hidden),
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            filter: (legendItem, chartData) => {
+                                // 上限・下限ラインは凡例から除外
+                                return !legendItem.text.includes('P97.5') && !legendItem.text.includes('P2.5');
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            afterLabel: (context) => {
+                                const dsIndex = Math.floor(context.datasetIndex / 3);  // 3データセットで1グループ
+                                const origDs = data.datasets[dsIndex >= data.datasets.length ? data.datasets.length - 1 : dsIndex];
+                                if (origDs && origDs.data[context.dataIndex]) {
+                                    const d = origDs.data[context.dataIndex];
+                                    return `95%区間: ${d.p2_5} - ${d.p97_5}, データ数: ${d.count}`;
+                                }
+                                return '';
+                            },
+                        },
+                    },
+                    subtitle: {
+                        display: true,
+                        text: '実線: 平均値 ／ 帯: 95%パーセンタイル区間 (P2.5 - P97.5)',
+                        color: '#666',
+                        font: { size: 12 },
+                        padding: { bottom: 10 },
+                    },
+                },
+                scales: {
+                    x: { title: { display: true, text: data.x_axis_label || 'X軸' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                    y: { title: { display: true, text: '値' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                },
+            },
+        });
+    } else {
+        // 箱ひげ図
+        const datasets = data.datasets.map((ds, idx) => {
+            const color = ds.group === 'selected' ? CHART_COLORS[0] :
+                ds.group === 'other' ? CHART_COLORS[1] : CHART_COLORS[idx];
+            const bgColor = ds.group === 'selected' ? CHART_BG_COLORS[0] :
+                ds.group === 'other' ? CHART_BG_COLORS[1] : CHART_BG_COLORS[idx];
+
+            return {
+                label: ds.label,
+                data: ds.data.map(d => ({
+                    min: d.min,
+                    q1: d.q1,
+                    median: d.median,
+                    q3: d.q3,
+                    max: d.max,
+                    outliers: d.outliers || [],
+                })),
+                backgroundColor: bgColor,
+                borderColor: color,
+                borderWidth: 2,
+                outlierBackgroundColor: CHART_COLORS[2],
+            };
+        });
+
+        distributionChartV2 = new Chart(ctx, {
+            type: 'boxplot',
+            data: {
+                labels: data.labels,
+                datasets: datasets,
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            afterLabel: (context) => {
+                                const ds = data.datasets[context.datasetIndex];
+                                if (ds && ds.data[context.dataIndex]) {
+                                    const d = ds.data[context.dataIndex];
+                                    return d.count ? `データ数: ${d.count}` : '';
+                                }
+                                return '';
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: { title: { display: true, text: data.x_axis_label || 'X軸' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                    y: { title: { display: true, text: '値' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                },
+            },
+        });
+    }
+}
 
 // ========================================
 // URL状態管理

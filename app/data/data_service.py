@@ -203,3 +203,28 @@ def get_boxplot(
         aggregation=aggregation,
         target_month=target_month,
     )
+
+
+def get_distribution_boxplot(
+    model: str,
+    x_axis_type: str,
+    bin_method: str,
+    bin_count: int,
+    category: str,
+    characteristic_id: str,
+    aggregation: str,
+    selected_machine_ids: list[str] | None = None,
+    chart_type: str = "boxplot",
+) -> dict[str, Any]:
+    """分布傾向箱ひげ図データを取得"""
+    return dummy.generate_distribution_boxplot_data(
+        model=model,
+        x_axis_type=x_axis_type,
+        bin_method=bin_method,
+        bin_count=bin_count,
+        category=category,
+        characteristic_id=characteristic_id,
+        aggregation=aggregation,
+        selected_machine_ids=selected_machine_ids,
+        chart_type=chart_type,
+    )

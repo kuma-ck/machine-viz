@@ -725,3 +725,254 @@ def generate_boxplot_data(
     }
 
 
+def generate_distribution_boxplot_data(
+    model: str,
+    x_axis_type: str,
+    bin_method: str,
+    bin_count: int,
+    category: str,
+    characteristic_id: str,
+    aggregation: str,
+    selected_machine_ids: list[str] | None = None,
+    chart_type: str = "boxplot",
+) -> dict[str, Any]:
+    """
+    分布傾向データを生成（2群比較・箱ひげ図/折れ線グラフ対応）
+    
+    Args:
+        model: 機種番号
+        x_axis_type: "usage" | "mfg_month"
+        bin_method: "equal_width" | "quantile"
+        bin_count: ビン数
+        category: データカテゴリー
+        characteristic_id: 特性値ID
+        aggregation: 集計方法
+        selected_machine_ids: 選択機番リスト（2群比較用）
+        chart_type: "boxplot" | "line"
+    
+    Returns:
+        箱ひげ図または折れ線グラフ用のデータ
+    """
+    machines = MACHINES_BY_MODEL.get(model, [])
+    if not machines:
+        return {"labels": [], "datasets": [], "x_axis_label": ""}
+    
+    # 選択機番セット
+    selected_set = set(selected_machine_ids) if selected_machine_ids else set()
+    
+    # 各機番のX軸値とY軸値を収集
+    data_points: list[dict[str, Any]] = []
+    
+    for machine_id in machines:
+        # X軸の値を取得
+        if x_axis_type == "usage":
+            seed = hash(f"{machine_id}_usage")
+            random.seed(seed)
+            x_value = random.randint(0, 1000)
+        else:  # mfg_month
+            parts = machine_id.split("-")
+            if len(parts) >= 3:
+                machine_num = int(parts[-1])
+            else:
+                machine_num = int(machine_id) % 10000
+            mfg_idx = 6 + (machine_num % 18)
+            x_value = mfg_idx
+        
+        # Y軸の値（特徴量）を取得
+        seed = hash(f"{machine_id}_{category}_{characteristic_id}")
+        random.seed(seed)
+        raw_count = random.randint(3, 10)
+        base_value = random.uniform(40, 100)
+        raw_values = [base_value + random.uniform(-25, 25) for _ in range(raw_count)]
+        
+        if aggregation == "平均値":
+            y_value = sum(raw_values) / len(raw_values)
+        elif aggregation == "最大値":
+            y_value = max(raw_values)
+        elif aggregation == "最小値":
+            y_value = min(raw_values)
+        elif aggregation == "合計値":
+            y_value = sum(raw_values)
+        elif aggregation == "カウント":
+            y_value = len(raw_values)
+        else:
+            y_value = sum(raw_values) / len(raw_values)
+        
+        is_selected = machine_id in selected_set
+        data_points.append({"x": x_value, "y": y_value, "machine_id": machine_id, "selected": is_selected})
+    
+    random.seed()
+    
+    # X軸の値でビン分割
+    x_values = [d["x"] for d in data_points]
+    
+    if x_axis_type == "mfg_month":
+        # 降順ソート（インデックス大=古い月が先）→ 左が古く右が新しい順
+        unique_months = sorted(set(x_values), reverse=True)
+        labels = [_AVAILABLE_MONTHS[m] if m < len(_AVAILABLE_MONTHS) else f"Month-{m}" for m in unique_months]
+        bin_keys = unique_months
+        
+        # 各月のデータをグループ化
+        if selected_set:
+            binned_selected: dict[int, list[float]] = {m: [] for m in unique_months}
+            binned_other: dict[int, list[float]] = {m: [] for m in unique_months}
+            for d in data_points:
+                if d["selected"]:
+                    binned_selected[d["x"]].append(d["y"])
+                else:
+                    binned_other[d["x"]].append(d["y"])
+        else:
+            binned_all: dict[int, list[float]] = {m: [] for m in unique_months}
+            for d in data_points:
+                binned_all[d["x"]].append(d["y"])
+    else:
+        # 使用回数の場合はビン分割
+        min_x, max_x = min(x_values), max(x_values)
+        
+        if bin_method == "quantile":
+            sorted_x = sorted(x_values)
+            n = len(sorted_x)
+            bin_edges = []
+            for i in range(bin_count + 1):
+                idx = int(i * n / bin_count)
+                if idx >= n:
+                    idx = n - 1
+                bin_edges.append(sorted_x[idx])
+            bin_edges = sorted(set(bin_edges))
+            if len(bin_edges) < 2:
+                bin_edges = [min_x, max_x]
+        else:
+            step = (max_x - min_x) / bin_count if max_x > min_x else 1
+            bin_edges = [min_x + i * step for i in range(bin_count + 1)]
+        
+        labels = [f"{int(bin_edges[i])}-{int(bin_edges[i+1])}" for i in range(len(bin_edges) - 1)]
+        bin_keys = list(range(len(bin_edges) - 1))
+        
+        # 各ビンのデータをグループ化
+        if selected_set:
+            binned_selected = {i: [] for i in bin_keys}
+            binned_other = {i: [] for i in bin_keys}
+            for d in data_points:
+                for i in range(len(bin_edges) - 1):
+                    if bin_edges[i] <= d["x"] < bin_edges[i + 1]:
+                        if d["selected"]:
+                            binned_selected[i].append(d["y"])
+                        else:
+                            binned_other[i].append(d["y"])
+                        break
+                else:
+                    if len(bin_edges) > 1:
+                        if d["selected"]:
+                            binned_selected[len(bin_edges) - 2].append(d["y"])
+                        else:
+                            binned_other[len(bin_edges) - 2].append(d["y"])
+        else:
+            binned_all = {i: [] for i in bin_keys}
+            for d in data_points:
+                for i in range(len(bin_edges) - 1):
+                    if bin_edges[i] <= d["x"] < bin_edges[i + 1]:
+                        binned_all[i].append(d["y"])
+                        break
+                else:
+                    if len(bin_edges) > 1:
+                        binned_all[len(bin_edges) - 2].append(d["y"])
+    
+    x_axis_label = "使用回数" if x_axis_type == "usage" else "製造月"
+    
+    def calc_stats(values: list[float]) -> dict[str, Any]:
+        """統計量を計算"""
+        if not values:
+            return {"mean": 0, "std": 0, "min": 0, "q1": 0, "median": 0, "q3": 0, "max": 0, "count": 0, "p2_5": 0, "p97_5": 0}
+        n = len(values)
+        sorted_v = sorted(values)
+        mean = sum(values) / n
+        variance = sum((v - mean) ** 2 for v in values) / n if n > 1 else 0
+        std = variance ** 0.5
+        q1_idx, q3_idx = n // 4, (3 * n) // 4
+        q1, median, q3 = sorted_v[q1_idx], sorted_v[n // 2], sorted_v[q3_idx]
+        
+        # 2.5%と97.5%パーセンタイル
+        p2_5_idx = max(0, int(n * 0.025))
+        p97_5_idx = min(n - 1, int(n * 0.975))
+        p2_5 = sorted_v[p2_5_idx]
+        p97_5 = sorted_v[p97_5_idx]
+        
+        iqr = q3 - q1
+        lower_fence, upper_fence = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        outliers = [v for v in sorted_v if v < lower_fence or v > upper_fence]
+        non_outliers = [v for v in sorted_v if lower_fence <= v <= upper_fence]
+        return {
+            "mean": round(mean, 2),
+            "std": round(std, 2),
+            "min": round(min(non_outliers) if non_outliers else sorted_v[0], 2),
+            "q1": round(q1, 2),
+            "median": round(median, 2),
+            "q3": round(q3, 2),
+            "max": round(max(non_outliers) if non_outliers else sorted_v[-1], 2),
+            "outliers": [round(v, 2) for v in outliers],
+            "count": n,
+            "p2_5": round(p2_5, 2),
+            "p97_5": round(p97_5, 2),
+        }
+    
+    if chart_type == "line":
+        # 折れ線グラフ用データ（平均＋標準偏差）
+        if selected_set:
+            selected_data = []
+            other_data = []
+            for i, key in enumerate(bin_keys):
+                selected_data.append(calc_stats(binned_selected[key]))
+                other_data.append(calc_stats(binned_other[key]))
+            return {
+                "labels": labels,
+                "datasets": [
+                    {"label": "選択機番群", "data": selected_data, "group": "selected"},
+                    {"label": "その他", "data": other_data, "group": "other"},
+                ],
+                "x_axis_label": x_axis_label,
+                "chart_type": "line",
+            }
+        else:
+            all_data = [calc_stats(binned_all[key]) for key in bin_keys]
+            return {
+                "labels": labels,
+                "datasets": [{"label": "全機番", "data": all_data, "group": "all"}],
+                "x_axis_label": x_axis_label,
+                "chart_type": "line",
+            }
+    else:
+        # 箱ひげ図用データ
+        if selected_set:
+            selected_boxplot = []
+            other_boxplot = []
+            final_labels = []
+            for i, key in enumerate(bin_keys):
+                s_stats = calc_stats(binned_selected[key])
+                o_stats = calc_stats(binned_other[key])
+                if s_stats["count"] > 0 or o_stats["count"] > 0:
+                    selected_boxplot.append(s_stats)
+                    other_boxplot.append(o_stats)
+                    final_labels.append(labels[i])
+            return {
+                "labels": final_labels,
+                "datasets": [
+                    {"label": "選択機番群", "data": selected_boxplot, "group": "selected"},
+                    {"label": "その他", "data": other_boxplot, "group": "other"},
+                ],
+                "x_axis_label": x_axis_label,
+                "chart_type": "boxplot",
+            }
+        else:
+            boxplot_data = []
+            final_labels = []
+            for i, key in enumerate(bin_keys):
+                stats = calc_stats(binned_all[key])
+                if stats["count"] > 0:
+                    boxplot_data.append(stats)
+                    final_labels.append(labels[i])
+            return {
+                "labels": final_labels,
+                "datasets": [{"label": f"{category} - {characteristic_id}", "data": boxplot_data, "group": "all"}],
+                "x_axis_label": x_axis_label,
+                "chart_type": "boxplot",
+            }

@@ -75,6 +75,59 @@
                     </div>
                 </div>
 
+                <!-- 分布傾向用の設定 -->
+                <div class="form-section" id="distributionSettings" style="display: none;">
+                    <h3 class="form-section-title">分布傾向設定</h3>
+                    <div class="form-group">
+                        <label>グラフタイプ</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="dist-chart-type" value="boxplot" checked>
+                                📦 箱ひげ図
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="dist-chart-type" value="line">
+                                📈 折れ線グラフ
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>X軸タイプ</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="dist-x-axis-type" value="usage" checked>
+                                使用回数
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="dist-x-axis-type" value="mfg_month">
+                                製造月
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group" id="binMethodGroup">
+                        <label>ビン分割方法</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="dist-bin-method" value="equal_width" checked>
+                                等間隔
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="dist-bin-method" value="quantile">
+                                等頻度（分位数）
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group" id="binCountGroup">
+                        <label for="dist-bin-count">ビン数</label>
+                        <select id="dist-bin-count" class="form-select">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="15">15</option>
+                            <option value="20">20</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="form-section">
                     <h3 class="form-section-title">グループ比較（オプション）</h3>
                     <p class="form-hint">機番を入力すると、選択機番群とその他の比較ができます</p>
@@ -122,6 +175,9 @@
                 </button>
                 <button type="button" class="chart-type-tab" data-chart-type="boxplot">
                     📦 箱ひげ図
+                </button>
+                <button type="button" class="chart-type-tab" data-chart-type="distribution">
+                    📈 分布傾向
                 </button>
             </div>
 
