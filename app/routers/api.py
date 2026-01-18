@@ -92,8 +92,7 @@ class DistributionBoxplotRequest(BaseModel):
     """分布傾向箱ひげ図リクエスト"""
     model: str
     x_axis_type: str  # "usage" | "mfg_month"
-    bin_method: str = "equal_width"  # "equal_width" | "quantile"
-    bin_count: int = 5
+    bin_width: int = 50000  # ビン幅（使用回数の場合）
     category: str
     characteristic_id: str
     aggregation: str
@@ -256,8 +255,7 @@ def get_distribution_boxplot(req: DistributionBoxplotRequest) -> dict[str, Any]:
     return data_service.get_distribution_boxplot(
         model=req.model,
         x_axis_type=req.x_axis_type,
-        bin_method=req.bin_method,
-        bin_count=req.bin_count,
+        bin_width=req.bin_width,
         category=req.category,
         characteristic_id=req.characteristic_id,
         aggregation=req.aggregation,

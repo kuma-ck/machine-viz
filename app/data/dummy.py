@@ -728,8 +728,7 @@ def generate_boxplot_data(
 def generate_distribution_boxplot_data(
     model: str,
     x_axis_type: str,
-    bin_method: str,
-    bin_count: int,
+    bin_width: int,
     category: str,
     characteristic_id: str,
     aggregation: str,
@@ -742,8 +741,7 @@ def generate_distribution_boxplot_data(
     Args:
         model: 機種番号
         x_axis_type: "usage" | "mfg_month"
-        bin_method: "equal_width" | "quantile"
-        bin_count: ビン数
+        bin_width: ビン幅（使用回数の区間幅）
         category: データカテゴリー
         characteristic_id: 特性値ID
         aggregation: 集計方法
@@ -768,7 +766,11 @@ def generate_distribution_boxplot_data(
         if x_axis_type == "usage":
             seed = hash(f"{machine_id}_usage")
             random.seed(seed)
-            x_value = random.randint(0, 1000)
+            # 指数減衰分布: 多くの機番は低使用回数、少数が高使用回数
+            # 0〜1の一様乱数を指数変換して0〜100万にスケール
+            u = random.random()
+            # 指数減衰パラメータ (lambda=5で急な減衰)
+            x_value = int((1 - u ** 0.2) * 1_000_000)  # べき乗変換で減衰
         else:  # mfg_month
             parts = machine_id.split("-")
             if len(parts) >= 3:
@@ -813,69 +815,37 @@ def generate_distribution_boxplot_data(
         bin_keys = unique_months
         
         # 各月のデータをグループ化
-        if selected_set:
-            binned_selected: dict[int, list[float]] = {m: [] for m in unique_months}
-            binned_other: dict[int, list[float]] = {m: [] for m in unique_months}
-            for d in data_points:
-                if d["selected"]:
-                    binned_selected[d["x"]].append(d["y"])
-                else:
-                    binned_other[d["x"]].append(d["y"])
-        else:
-            binned_all: dict[int, list[float]] = {m: [] for m in unique_months}
-            for d in data_points:
-                binned_all[d["x"]].append(d["y"])
+        binned_data: dict[int, list[dict[str, Any]]] = {m: [] for m in unique_months}
+        for d in data_points:
+            binned_data[d["x"]].append(d)
     else:
-        # 使用回数の場合はビン分割
+        # 使用回数の場合はビン幅で分割
         min_x, max_x = min(x_values), max(x_values)
         
-        if bin_method == "quantile":
-            sorted_x = sorted(x_values)
-            n = len(sorted_x)
-            bin_edges = []
-            for i in range(bin_count + 1):
-                idx = int(i * n / bin_count)
-                if idx >= n:
-                    idx = n - 1
-                bin_edges.append(sorted_x[idx])
-            bin_edges = sorted(set(bin_edges))
-            if len(bin_edges) < 2:
-                bin_edges = [min_x, max_x]
-        else:
-            step = (max_x - min_x) / bin_count if max_x > min_x else 1
-            bin_edges = [min_x + i * step for i in range(bin_count + 1)]
+        # ビン幅で等間隔分割（0から始める）
+        bin_edges = list(range(0, max_x + bin_width + 1, bin_width))
+        if bin_edges[-1] < max_x:
+            bin_edges.append(bin_edges[-1] + bin_width)
         
-        labels = [f"{int(bin_edges[i])}-{int(bin_edges[i+1])}" for i in range(len(bin_edges) - 1)]
+        labels = [f"{int(bin_edges[i]):,}-{int(bin_edges[i+1]):,}" for i in range(len(bin_edges) - 1)]
         bin_keys = list(range(len(bin_edges) - 1))
         
         # 各ビンのデータをグループ化
-        if selected_set:
-            binned_selected = {i: [] for i in bin_keys}
-            binned_other = {i: [] for i in bin_keys}
-            for d in data_points:
-                for i in range(len(bin_edges) - 1):
-                    if bin_edges[i] <= d["x"] < bin_edges[i + 1]:
-                        if d["selected"]:
-                            binned_selected[i].append(d["y"])
-                        else:
-                            binned_other[i].append(d["y"])
-                        break
-                else:
-                    if len(bin_edges) > 1:
-                        if d["selected"]:
-                            binned_selected[len(bin_edges) - 2].append(d["y"])
-                        else:
-                            binned_other[len(bin_edges) - 2].append(d["y"])
-        else:
-            binned_all = {i: [] for i in bin_keys}
-            for d in data_points:
-                for i in range(len(bin_edges) - 1):
-                    if bin_edges[i] <= d["x"] < bin_edges[i + 1]:
-                        binned_all[i].append(d["y"])
-                        break
-                else:
-                    if len(bin_edges) > 1:
-                        binned_all[len(bin_edges) - 2].append(d["y"])
+        binned_data = {i: [] for i in bin_keys}
+        for d in data_points:
+            for i in range(len(bin_edges) - 1):
+                if bin_edges[i] <= d["x"] < bin_edges[i + 1]:
+                    binned_data[i].append(d)
+                    break
+            else:
+                if len(bin_edges) > 1:
+                    binned_data[len(bin_edges) - 2].append(d)
+    
+    # 各ビンの詳細データを保持
+    raw_data_by_bin = []
+    for key in bin_keys:
+        bin_raw_data = [{"machine_id": d["machine_id"], "value": round(d["y"], 2), "x_value": d["x"]} for d in binned_data[key]]
+        raw_data_by_bin.append(bin_raw_data)
     
     x_axis_label = "使用回数" if x_axis_type == "usage" else "製造月"
     
@@ -920,9 +890,11 @@ def generate_distribution_boxplot_data(
         if selected_set:
             selected_data = []
             other_data = []
-            for i, key in enumerate(bin_keys):
-                selected_data.append(calc_stats(binned_selected[key]))
-                other_data.append(calc_stats(binned_other[key]))
+            for key in bin_keys:
+                selected_values = [d["y"] for d in binned_data[key] if d["selected"]]
+                other_values = [d["y"] for d in binned_data[key] if not d["selected"]]
+                selected_data.append(calc_stats(selected_values))
+                other_data.append(calc_stats(other_values))
             return {
                 "labels": labels,
                 "datasets": [
@@ -931,14 +903,16 @@ def generate_distribution_boxplot_data(
                 ],
                 "x_axis_label": x_axis_label,
                 "chart_type": "line",
+                "raw_data_by_bin": raw_data_by_bin,
             }
         else:
-            all_data = [calc_stats(binned_all[key]) for key in bin_keys]
+            all_data = [calc_stats([d["y"] for d in binned_data[key]]) for key in bin_keys]
             return {
                 "labels": labels,
                 "datasets": [{"label": "全機番", "data": all_data, "group": "all"}],
                 "x_axis_label": x_axis_label,
                 "chart_type": "line",
+                "raw_data_by_bin": raw_data_by_bin,
             }
     else:
         # 箱ひげ図用データ
@@ -946,13 +920,17 @@ def generate_distribution_boxplot_data(
             selected_boxplot = []
             other_boxplot = []
             final_labels = []
+            final_raw_data = []
             for i, key in enumerate(bin_keys):
-                s_stats = calc_stats(binned_selected[key])
-                o_stats = calc_stats(binned_other[key])
+                selected_values = [d["y"] for d in binned_data[key] if d["selected"]]
+                other_values = [d["y"] for d in binned_data[key] if not d["selected"]]
+                s_stats = calc_stats(selected_values)
+                o_stats = calc_stats(other_values)
                 if s_stats["count"] > 0 or o_stats["count"] > 0:
                     selected_boxplot.append(s_stats)
                     other_boxplot.append(o_stats)
                     final_labels.append(labels[i])
+                    final_raw_data.append(raw_data_by_bin[i])
             return {
                 "labels": final_labels,
                 "datasets": [
@@ -961,18 +939,23 @@ def generate_distribution_boxplot_data(
                 ],
                 "x_axis_label": x_axis_label,
                 "chart_type": "boxplot",
+                "raw_data_by_bin": final_raw_data,
             }
         else:
             boxplot_data = []
             final_labels = []
+            final_raw_data = []
             for i, key in enumerate(bin_keys):
-                stats = calc_stats(binned_all[key])
+                all_values = [d["y"] for d in binned_data[key]]
+                stats = calc_stats(all_values)
                 if stats["count"] > 0:
                     boxplot_data.append(stats)
                     final_labels.append(labels[i])
+                    final_raw_data.append(raw_data_by_bin[i])
             return {
                 "labels": final_labels,
                 "datasets": [{"label": f"{category} - {characteristic_id}", "data": boxplot_data, "group": "all"}],
                 "x_axis_label": x_axis_label,
                 "chart_type": "boxplot",
+                "raw_data_by_bin": final_raw_data,
             }

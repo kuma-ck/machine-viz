@@ -208,8 +208,7 @@ def get_boxplot(
 def get_distribution_boxplot(
     model: str,
     x_axis_type: str,
-    bin_method: str,
-    bin_count: int,
+    bin_width: int,
     category: str,
     characteristic_id: str,
     aggregation: str,
@@ -220,8 +219,7 @@ def get_distribution_boxplot(
     return dummy.generate_distribution_boxplot_data(
         model=model,
         x_axis_type=x_axis_type,
-        bin_method=bin_method,
-        bin_count=bin_count,
+        bin_width=bin_width,
         category=category,
         characteristic_id=characteristic_id,
         aggregation=aggregation,

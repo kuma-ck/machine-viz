@@ -13,7 +13,7 @@
     <aside class="sidebar" id="sidebar">
         <div class="card condition-card">
             <h2 class="card-title">条件設定</h2>
-            <form id="histogramForm" class="condition-form">
+            <form id="histogramForm" class="condition-form" novalidate>
                 <div class="form-section">
                     <h3 class="form-section-title">基本条件</h3>
                     <div class="form-group">
@@ -75,56 +75,55 @@
                     </div>
                 </div>
 
-                <!-- 分布傾向用の設定 -->
-                <div class="form-section" id="distributionSettings" style="display: none;">
-                    <h3 class="form-section-title">分布傾向設定</h3>
-                    <div class="form-group">
-                        <label>グラフタイプ</label>
-                        <div class="radio-group">
-                            <label class="radio-label">
-                                <input type="radio" name="dist-chart-type" value="boxplot" checked>
-                                📦 箱ひげ図
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="dist-chart-type" value="line">
-                                📈 折れ線グラフ
-                            </label>
-                        </div>
-                    </div>
+                <!-- 箱ひげ図用の設定 -->
+                <div class="form-section" id="boxplotSettings" style="display: none;">
+                    <h3 class="form-section-title">箱ひげ図 X軸設定</h3>
                     <div class="form-group">
                         <label>X軸タイプ</label>
                         <div class="radio-group">
                             <label class="radio-label">
-                                <input type="radio" name="dist-x-axis-type" value="usage" checked>
+                                <input type="radio" name="boxplot-x-axis-type" value="model" checked>
+                                機種比較
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="boxplot-x-axis-type" value="usage">
                                 使用回数
                             </label>
                             <label class="radio-label">
-                                <input type="radio" name="dist-x-axis-type" value="mfg_month">
+                                <input type="radio" name="boxplot-x-axis-type" value="mfg_month">
                                 製造月
                             </label>
                         </div>
                     </div>
-                    <div class="form-group" id="binMethodGroup">
-                        <label>ビン分割方法</label>
+                    <div class="form-group" id="boxplotBinWidthGroup" style="display: none;">
+                        <label for="boxplot-bin-width">ビン幅</label>
+                        <input type="number" id="boxplot-bin-width" class="form-input" value="50000" min="1000"
+                            step="10000" placeholder="例: 50000">
+                        <span class="form-hint">使用回数の区間幅を指定</span>
+                    </div>
+                </div>
+
+                <!-- 折れ線グラフ用の設定 -->
+                <div class="form-section" id="linechartSettings" style="display: none;">
+                    <h3 class="form-section-title">折れ線グラフ X軸設定</h3>
+                    <div class="form-group">
+                        <label>X軸タイプ</label>
                         <div class="radio-group">
                             <label class="radio-label">
-                                <input type="radio" name="dist-bin-method" value="equal_width" checked>
-                                等間隔
+                                <input type="radio" name="linechart-x-axis-type" value="usage" checked>
+                                使用回数
                             </label>
                             <label class="radio-label">
-                                <input type="radio" name="dist-bin-method" value="quantile">
-                                等頻度（分位数）
+                                <input type="radio" name="linechart-x-axis-type" value="mfg_month">
+                                製造月
                             </label>
                         </div>
                     </div>
-                    <div class="form-group" id="binCountGroup">
-                        <label for="dist-bin-count">ビン数</label>
-                        <select id="dist-bin-count" class="form-select">
-                            <option value="5">5</option>
-                            <option value="10" selected>10</option>
-                            <option value="15">15</option>
-                            <option value="20">20</option>
-                        </select>
+                    <div class="form-group" id="linechartBinWidthGroup">
+                        <label for="linechart-bin-width">ビン幅</label>
+                        <input type="number" id="linechart-bin-width" class="form-input" value="50000" min="1000"
+                            step="10000" placeholder="例: 50000">
+                        <span class="form-hint">使用回数の区間幅を指定</span>
                     </div>
                 </div>
 
@@ -176,8 +175,8 @@
                 <button type="button" class="chart-type-tab" data-chart-type="boxplot">
                     📦 箱ひげ図
                 </button>
-                <button type="button" class="chart-type-tab" data-chart-type="distribution">
-                    📈 分布傾向
+                <button type="button" class="chart-type-tab" data-chart-type="linechart">
+                    📈 折れ線グラフ
                 </button>
             </div>
 
@@ -191,8 +190,11 @@
     <!-- 詳細データエリア -->
     <div class="data-grid-area" id="dataGridArea" style="display: none;">
         <div class="card">
-            <h3 class="card-title">選択データ詳細</h3>
-            <div class="table-container">
+            <div class="card-header">
+                <h3 class="card-title">選択データ詳細</h3>
+                <button type="button" class="btn btn-outline btn-sm" id="closeDetailBtn">✕ 閉じる</button>
+            </div>
+            <div class="table-container" style="max-height: 400px; overflow-y: auto;">
                 <table class="data-table" id="detailTable">
                     <thead>
                         <tr>

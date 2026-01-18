@@ -1540,6 +1540,7 @@ let distributionStateV2 = {
     scatterData: null,
     boxplotData: null,
     distributionData: null,
+    linechartData: null,
 };
 
 async function initHistogramPageV2() {
@@ -1610,17 +1611,27 @@ async function initHistogramPageV2() {
         });
     }
 
-    // 分布傾向設定要素
-    const distributionSettings = document.getElementById('distributionSettings');
-    const binMethodGroup = document.getElementById('binMethodGroup');
-    const binCountGroup = document.getElementById('binCountGroup');
+    // 箱ひげ図設定要素
+    const boxplotSettings = document.getElementById('boxplotSettings');
+    const boxplotBinWidthGroup = document.getElementById('boxplotBinWidthGroup');
 
-    // X軸タイプ変更時（製造月の場合はビン設定を非表示）
-    document.querySelectorAll('input[name="dist-x-axis-type"]').forEach(radio => {
+    // 折れ線グラフ設定要素
+    const linechartSettings = document.getElementById('linechartSettings');
+    const linechartBinWidthGroup = document.getElementById('linechartBinWidthGroup');
+
+    // 箱ひげ図X軸タイプ変更時（使用回数の場合のみビン幅設定を表示）
+    document.querySelectorAll('input[name="boxplot-x-axis-type"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            const isUsage = radio.value === 'usage' && radio.checked;
+            if (boxplotBinWidthGroup) boxplotBinWidthGroup.style.display = isUsage ? 'block' : 'none';
+        });
+    });
+
+    // 折れ線グラフX軸タイプ変更時（製造月の場合はビン幅設定を非表示）
+    document.querySelectorAll('input[name="linechart-x-axis-type"]').forEach(radio => {
         radio.addEventListener('change', () => {
             const isMfgMonth = radio.value === 'mfg_month' && radio.checked;
-            if (binMethodGroup) binMethodGroup.style.display = isMfgMonth ? 'none' : 'block';
-            if (binCountGroup) binCountGroup.style.display = isMfgMonth ? 'none' : 'block';
+            if (linechartBinWidthGroup) linechartBinWidthGroup.style.display = isMfgMonth ? 'none' : 'block';
         });
     });
 
@@ -1636,9 +1647,14 @@ async function initHistogramPageV2() {
                 scatterSettings.style.display = distributionStateV2.chartType === 'scatter' ? 'block' : 'none';
             }
 
-            // 分布傾向設定の表示/非表示
-            if (distributionSettings) {
-                distributionSettings.style.display = distributionStateV2.chartType === 'distribution' ? 'block' : 'none';
+            // 箱ひげ図設定の表示/非表示
+            if (boxplotSettings) {
+                boxplotSettings.style.display = distributionStateV2.chartType === 'boxplot' ? 'block' : 'none';
+            }
+
+            // 折れ線グラフ設定の表示/非表示
+            if (linechartSettings) {
+                linechartSettings.style.display = distributionStateV2.chartType === 'linechart' ? 'block' : 'none';
             }
 
             // データがあれば再描画
@@ -1764,6 +1780,17 @@ async function initHistogramPageV2() {
         }
     });
 
+    // 詳細テーブルを閉じる
+    const closeDetailBtn = document.getElementById('closeDetailBtn');
+    if (closeDetailBtn) {
+        closeDetailBtn.addEventListener('click', () => {
+            const dataGridArea = document.getElementById('dataGridArea');
+            if (dataGridArea) {
+                dataGridArea.style.display = 'none';
+            }
+        });
+    }
+
     async function loadDistributionData() {
         const selectedMachines = parseMachineIds(machinesTextarea.value);
 
@@ -1825,27 +1852,50 @@ async function initHistogramPageV2() {
                 distributionStateV2.boxplotData = boxplotData;
             }
 
-            // 分布傾向データを取得
-            const xAxisType = document.querySelector('input[name="dist-x-axis-type"]:checked')?.value || 'usage';
-            const binMethod = document.querySelector('input[name="dist-bin-method"]:checked')?.value || 'equal_width';
-            const binCount = parseInt(document.getElementById('dist-bin-count')?.value || '10');
-            const distChartType = document.querySelector('input[name="dist-chart-type"]:checked')?.value || 'boxplot';
+            // 箱ひげ図の分布傾向データを取得（X軸が使用回数または製造月の場合）
+            const boxplotXAxisType = document.querySelector('input[name="boxplot-x-axis-type"]:checked')?.value || 'model';
+            if (boxplotXAxisType !== 'model') {
+                const boxplotBinWidth = parseInt(document.getElementById('boxplot-bin-width')?.value || '50000');
 
-            const distributionData = await fetchAPI('/distribution-boxplot', {
+                const boxplotDistData = await fetchAPI('/distribution-boxplot', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        model: baseParams.model,
+                        x_axis_type: boxplotXAxisType,
+                        bin_width: boxplotBinWidth,
+                        category: baseParams.category,
+                        characteristic_id: baseParams.characteristic_id,
+                        aggregation: baseParams.aggregation,
+                        selected_machine_ids: selectedMachines.length > 0 ? selectedMachines : null,
+                        chart_type: 'boxplot',
+                    }),
+                });
+                distributionStateV2.distributionData = boxplotDistData;
+            }
+
+            // 折れ線グラフのデータを取得
+            const linechartXAxisType = document.querySelector('input[name="linechart-x-axis-type"]:checked')?.value || 'usage';
+            const linechartBinWidth = parseInt(document.getElementById('linechart-bin-width')?.value || '50000');
+
+            const linechartData = await fetchAPI('/distribution-boxplot', {
                 method: 'POST',
                 body: JSON.stringify({
                     model: baseParams.model,
-                    x_axis_type: xAxisType,
-                    bin_method: binMethod,
-                    bin_count: binCount,
+                    x_axis_type: linechartXAxisType,
+                    bin_width: linechartBinWidth,
                     category: baseParams.category,
                     characteristic_id: baseParams.characteristic_id,
                     aggregation: baseParams.aggregation,
                     selected_machine_ids: selectedMachines.length > 0 ? selectedMachines : null,
-                    chart_type: distChartType,
+                    chart_type: 'line',
                 }),
             });
-            distributionStateV2.distributionData = distributionData;
+
+            // 折れ線グラフ用データを保存（箱ひげ図用データがない場合はこちらも使用）
+            if (boxplotXAxisType === 'model') {
+                distributionStateV2.distributionData = linechartData;
+            }
+            distributionStateV2.linechartData = linechartData;
 
             renderDistributionChart();
             showElement('chartCard');
@@ -1882,9 +1932,15 @@ function renderDistributionChart() {
     } else if (chartType === 'scatter') {
         renderScatterChartV2(ctx, distributionStateV2.scatterData || distributionStateV2.data);
     } else if (chartType === 'boxplot') {
-        renderBoxplotChartV2(ctx, distributionStateV2.boxplotData);
-    } else if (chartType === 'distribution') {
-        renderDistributionBoxplotChart(ctx, distributionStateV2.distributionData);
+        // 箱ひげ図: X軸タイプに応じて切替
+        const boxplotXAxisType = document.querySelector('input[name="boxplot-x-axis-type"]:checked')?.value || 'model';
+        if (boxplotXAxisType === 'model') {
+            renderBoxplotChartV2(ctx, distributionStateV2.boxplotData);
+        } else {
+            renderDistributionBoxplotChart(ctx, distributionStateV2.distributionData);
+        }
+    } else if (chartType === 'linechart') {
+        renderDistributionBoxplotChart(ctx, distributionStateV2.linechartData || distributionStateV2.distributionData);
     }
 }
 
@@ -1947,8 +2003,95 @@ function renderHistogramChartV2(ctx, data) {
                 x: { title: { display: true, text: '値の範囲' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
                 y: { title: { display: true, text: '相対頻度（%）' }, beginAtZero: true, max: 100, grid: { color: 'rgba(0, 0, 0, 0.05)' }, ticks: { callback: (v) => `${v}%` } },
             },
+            onClick: (event, elements) => {
+                if (elements.length === 0) return;
+
+                const clickedIndex = elements[0].index;
+                const bins = data.bins;
+                const minValue = bins[clickedIndex];
+                const maxValue = bins[clickedIndex + 1];
+
+                // 選択されたビン範囲のデータを抽出
+                const rawData = data.raw_data || [];
+                const filteredData = rawData.filter(d => d.value >= minValue && d.value < maxValue);
+
+                // 詳細テーブルにデータを表示
+                showHistogramDetailTable(filteredData, minValue, maxValue);
+            },
         },
     });
+}
+
+// ヒストグラム詳細テーブル表示
+function showHistogramDetailTable(data, minValue, maxValue) {
+    const dataGridArea = document.getElementById('dataGridArea');
+    const detailTableBody = document.getElementById('detailTableBody');
+    const cardTitle = dataGridArea?.querySelector('.card-title');
+
+    if (!dataGridArea || !detailTableBody) return;
+
+    // タイトル更新
+    if (cardTitle) {
+        cardTitle.textContent = `選択データ詳細（${minValue} ～ ${maxValue}）: ${data.length}件`;
+    }
+
+    // テーブルをクリア
+    detailTableBody.innerHTML = '';
+
+    if (data.length === 0) {
+        detailTableBody.innerHTML = '<tr><td colspan="2" class="text-center">該当するデータがありません</td></tr>';
+    } else {
+        // 値でソート
+        const sortedData = [...data].sort((a, b) => a.value - b.value);
+
+        sortedData.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.machine_id}</td>
+                <td>${item.value.toFixed(2)}</td>
+            `;
+            detailTableBody.appendChild(tr);
+        });
+    }
+
+    // 詳細エリアを表示
+    dataGridArea.style.display = '';
+}
+
+// 折れ線グラフ詳細テーブル表示
+function showLinechartDetailTable(data, label) {
+    const dataGridArea = document.getElementById('dataGridArea');
+    const detailTableBody = document.getElementById('detailTableBody');
+    const cardTitle = dataGridArea?.querySelector('.card-title');
+
+    if (!dataGridArea || !detailTableBody) return;
+
+    // タイトル更新
+    if (cardTitle) {
+        cardTitle.textContent = `選択データ詳細（${label}）: ${data.length}件`;
+    }
+
+    // テーブルをクリア
+    detailTableBody.innerHTML = '';
+
+    if (data.length === 0) {
+        detailTableBody.innerHTML = '<tr><td colspan="2" class="text-center">該当するデータがありません</td></tr>';
+    } else {
+        // 値でソート
+        const sortedData = [...data].sort((a, b) => a.value - b.value);
+
+        sortedData.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.machine_id}</td>
+                <td>${item.value.toFixed(2)}</td>
+            `;
+            detailTableBody.appendChild(tr);
+        });
+    }
+
+    // 詳細エリアを表示
+    dataGridArea.style.display = '';
 }
 
 function renderScatterChartV2(ctx, data) {
@@ -2185,6 +2328,19 @@ function renderDistributionBoxplotChart(ctx, data) {
                 scales: {
                     x: { title: { display: true, text: data.x_axis_label || 'X軸' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
                     y: { title: { display: true, text: '値' }, grid: { color: 'rgba(0, 0, 0, 0.05)' } },
+                },
+                onClick: (event, elements) => {
+                    if (elements.length === 0) return;
+
+                    const clickedIndex = elements[0].index;
+                    const label = data.labels[clickedIndex];
+
+                    // raw_data_by_binからクリックされたビンのデータを取得
+                    const rawDataByBin = data.raw_data_by_bin || [];
+                    const binData = rawDataByBin[clickedIndex] || [];
+
+                    // 詳細テーブルにデータを表示
+                    showLinechartDetailTable(binData, label);
                 },
             },
         });
