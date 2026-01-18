@@ -29,10 +29,13 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="hist-month">対象月</label>
-                        <select id="hist-month" class="form-select" required>
-                            <option value="">選択してください</option>
-                        </select>
+                        <label>対象期間</label>
+                        <div class="date-range-inputs">
+                            <input type="date" id="hist-date-from" class="form-input" required>
+                            <span class="date-range-separator">～</span>
+                            <input type="date" id="hist-date-to" class="form-input" required>
+                        </div>
+                        <span class="form-hint">最大31日間まで選択可能</span>
                     </div>
                 </div>
 
@@ -191,19 +194,48 @@
     <div class="data-grid-area" id="dataGridArea" style="display: none;">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">選択データ詳細</h3>
-                <button type="button" class="btn btn-outline btn-sm" id="closeDetailBtn">✕ 閉じる</button>
+                <div class="card-title-group">
+                    <h3 class="card-title">選択データ詳細</h3>
+                    <span class="result-count-badge" id="detailDataCount">0件</span>
+                </div>
+                <div class="result-actions">
+
+                    <button type="button" class="btn btn-outline btn-sm" id="downloadDataBtn" title="CSVダウンロード">
+                        📥 CSV
+                    </button>
+                    <button type="button" class="btn btn-outline btn-sm" id="closeDetailBtn">✕ 閉じる</button>
+                </div>
             </div>
-            <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+
+            <div class="table-container table-scrollable">
                 <table class="data-table" id="detailTable">
                     <thead>
                         <tr>
-                            <th>機番</th>
-                            <th>値</th>
+                            <th class="sortable-header" data-column="machine_id">機番<span class="sort-icon"></span></th>
+                            <th class="sortable-header" data-column="value">値<span class="sort-icon"></span></th>
                         </tr>
                     </thead>
                     <tbody id="detailTableBody"></tbody>
                 </table>
+            </div>
+
+            <div class="pagination-controls" id="detailPagination" style="display: none;">
+                <div class="pagination-info">
+                    <span id="pageInfo">1 / 1 ページ</span>
+                    <input type="number" id="pageJumpInput" class="form-control form-control-sm"
+                        style="width: 60px; display: inline-block; margin: 0 5px; padding: 2px 5px;" min="1" value="1">
+                    <select id="pageSizeSelect" class="form-select form-select-sm"
+                        style="width: auto; padding: 2px 8px;">
+                        <option value="10">10件</option>
+                        <option value="20" selected>20件</option>
+                        <option value="50">50件</option>
+                        <option value="100">100件</option>
+                    </select>
+                </div>
+                <div class="pagination-buttons">
+                    <button type="button" class="btn btn-outline btn-sm" id="prevPageBtn" disabled>←</button>
+                    <button type="button" class="btn btn-outline btn-sm" id="nextPageBtn" disabled>→</button>
+                </div>
             </div>
         </div>
     </div>

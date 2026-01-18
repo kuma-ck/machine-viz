@@ -27,6 +27,8 @@ def get_annotation_types() -> list[dict[str, str]]:
 def generate_machine_annotations(
     machine_ids: list[str],
     months: int = 12,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     機番ごとのアノテーションを生成
@@ -44,6 +46,10 @@ def generate_machine_annotations(
         ]
     """
     base_date = datetime(2026, 1, 1)
+    
+    # 日付範囲が指定されている場合、base_dateは関係なくなるが、互換性のため残す
+    # 本来は日付範囲からランダムに生成すべきだが、ここでは既存ロジックで生成してフィルタリングする
+    
     annotations = []
     
     # 共通イベント（全機番に影響）
@@ -74,7 +80,7 @@ def generate_machine_annotations(
         num_events = random.randint(1, 4)
         
         for _ in range(num_events):
-            days_ago = random.randint(30, months * 30)
+            days_ago = random.randint(0, months * 30)  # 直近から生成
             event_date = base_date - timedelta(days=days_ago)
             event_type = random.choice(["parts", "maintenance", "error"])
             
@@ -99,12 +105,22 @@ def generate_machine_annotations(
     # 日付順にソート
     annotations.sort(key=lambda x: x["date"])
     
+    # 日付範囲でフィルタリング
+    if date_from and date_to:
+        filtered = []
+        for ann in annotations:
+            if date_from <= ann["date"] <= date_to:
+                filtered.append(ann)
+        return filtered
+        
     return annotations
 
 
 def get_annotations_for_timeseries(
     machine_ids: list[str],
     months: int = 12,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     時系列グラフ用のアノテーションを取得
@@ -127,13 +143,19 @@ def get_annotations_for_timeseries(
             ...
         ]
     """
-    raw_annotations = generate_machine_annotations(machine_ids, months)
+    raw_annotations = generate_machine_annotations(machine_ids, months, date_from, date_to)
     
     chart_annotations = []
     for ann in raw_annotations:
-        # 日付を月形式に変換（時系列チャートの形式に合わせる）
+        # 日付形式の決定（日単位表示ならYYYY-MM-DD、月単位ならYYYY-MM）
         date_obj = datetime.strptime(ann["date"], "%Y-%m-%d")
-        month_label = date_obj.strftime("%Y-%m")
+        
+        if date_from and date_to:
+            # 日単位表示
+            x_label = ann["date"]
+        else:
+            # 月単位表示
+            x_label = date_obj.strftime("%Y-%m")
         
         type_info = next((t for t in ANNOTATION_TYPES if t["id"] == ann["type"]), None)
         color = type_info["color"] if type_info else "#888888"
@@ -153,8 +175,8 @@ def get_annotations_for_timeseries(
         
         chart_annotations.append({
             "type": "line",
-            "xMin": month_label,
-            "xMax": month_label,
+            "xMin": x_label,
+            "xMax": x_label,
             "borderColor": color,
             "borderWidth": 2,
             "borderDash": [5, 5] if ann["type"] == "error" else [],

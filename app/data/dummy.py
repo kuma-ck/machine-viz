@@ -299,7 +299,8 @@ def generate_histogram_data(
     category: str,
     characteristic_id: str,
     aggregation: str,
-    target_month: str,
+    target_date_from: str,
+    target_date_to: str,
     selected_machine_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """
@@ -321,7 +322,8 @@ def generate_histogram_data(
     other_values = []
     
     for machine_id in machines:
-        seed = hash(f"{machine_id}_{category}_{characteristic_id}_{target_month}")
+        # 日付範囲をシードに含める（再現性確保）
+        seed = hash(f"{machine_id}_{category}_{characteristic_id}_{target_date_from}_{target_date_to}")
         random.seed(seed)
         
         # 機番ごとに3〜10個の生データを生成（センサー読み取り値をシミュレート）
@@ -404,39 +406,39 @@ def generate_multi_timeseries_data(
     machine_ids: list[str],
     variables: list[dict[str, str]],
     aggregation: str,
-    x_axis_type: str = "time",
+    x_axis_type: str = "time_month",
     months: int = 12,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> dict[str, Any]:
     """
     多変量時系列データを生成（マルチY軸対応）
     
     Args:
-        machine_ids: 機番リスト
-        variables: [{"category": "...", "characteristic_id": "...", "axis": "left|right"}]
-        aggregation: 集計方法
-        x_axis_type: "time" (月次) or "usage" (使用回数)
-        months: 月数
-    
-    Returns:
-        {
-            "labels": ["2025-02", "2025-03", ...] or ["100", "200", ...],
-            "datasets": [...],
-            "scales": {...},
-            "x_axis_type": "time" or "usage"
-        }
+        x_axis_type: "time_month", "time_day", "time", "usage"
     """
-    base_date = datetime(2026, 1, 1)
+    labels = []
     
     # X軸ラベルを生成
     if x_axis_type == "usage":
         # 使用回数ベース（0〜1000回を12分割）
         labels = [str(i * 100) for i in range(months)]
+        count = months
+    elif x_axis_type == "time_day" and date_from and date_to:
+        # 日単位表示
+        from_d = datetime.strptime(date_from, "%Y-%m-%d")
+        to_d = datetime.strptime(date_to, "%Y-%m-%d")
+        delta = (to_d - from_d).days + 1
+        labels = [(from_d + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(delta)]
+        count = delta
     else:
         # 時間ベース（月次）
-        labels = []
+        # timeもtime_monthとして扱う
+        base_date = datetime(2026, 1, 1)
         for i in range(months - 1, -1, -1):
             d = base_date - timedelta(days=i * 30)
             labels.append(d.strftime("%Y-%m"))
+        count = months
     
     datasets = []
     left_values: list[float] = []
@@ -457,7 +459,7 @@ def generate_multi_timeseries_data(
             base_value = char_base.get(char_id, random.uniform(50, 150))
             
             data = []
-            for idx in range(months):
+            for idx in range(count):
                 raw_count = random.randint(5, 15)
                 raw_values = [base_value + random.uniform(-30, 30) for _ in range(raw_count)]
                 

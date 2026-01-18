@@ -1103,6 +1103,34 @@ async function initTimeseriesPageV2() {
     const sidebar = document.getElementById('sidebar');
     const zoomResetBtn = document.getElementById('zoomResetBtn');
 
+    // 日付範囲要素を取得
+    const xAxisTimeMonth = document.getElementById('xAxisTimeMonth');
+    const xAxisTimeDay = document.getElementById('xAxisTimeDay');
+    const xAxisUsage = document.getElementById('xAxisUsage');
+    const dayRangeGroup = document.getElementById('dayRangeGroup');
+    const dateFromInput = document.getElementById('ts-date-from');
+    const dateToInput = document.getElementById('ts-date-to');
+
+    // 日付入力の初期値設定（本日から30日前まで）
+    const today = new Date();
+    const monthAgo = new Date(today);
+    monthAgo.setDate(today.getDate() - 30);
+    if (dateFromInput) dateFromInput.value = monthAgo.toISOString().split('T')[0];
+    if (dateToInput) dateToInput.value = today.toISOString().split('T')[0];
+
+    // ラジオボタンのイベントハンドラー
+    const handleXAxisChange = () => {
+        if (xAxisTimeDay.checked) {
+            dayRangeGroup.style.display = 'block';
+        } else {
+            dayRangeGroup.style.display = 'none';
+        }
+    };
+
+    if (xAxisTimeMonth) xAxisTimeMonth.addEventListener('change', handleXAxisChange);
+    if (xAxisTimeDay) xAxisTimeDay.addEventListener('change', handleXAxisChange);
+    if (xAxisUsage) xAxisUsage.addEventListener('change', handleXAxisChange);
+
     // 初期データ読み込み
     const [categories, aggregations] = await Promise.all([
         getCategories(),
@@ -1321,7 +1349,35 @@ async function initTimeseriesPageV2() {
         const aggregation = '平均値';
 
         // X軸タイプを取得
-        const xAxisType = document.querySelector('input[name="xAxisType"]:checked')?.value || 'time';
+        const xAxisType = document.querySelector('input[name="xAxisType"]:checked')?.value || 'time_month';
+
+        // 日単位表示の場合のパラメータ取得とバリデーション
+        let dateFrom = null;
+        let dateTo = null;
+
+        if (xAxisType === 'time_day') {
+            dateFrom = dateFromInput?.value;
+            dateTo = dateToInput?.value;
+
+            if (!dateFrom || !dateTo) {
+                alert('表示期間を入力してください');
+                return;
+            }
+
+            const fromDate = new Date(dateFrom);
+            const toDate = new Date(dateTo);
+            const diffDays = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24));
+
+            if (diffDays < 0) {
+                alert('終了日は開始日以降に設定してください');
+                return;
+            }
+
+            if (diffDays > 60) {
+                alert('日単位表示は最大60日間までです');
+                return;
+            }
+        }
 
         try {
             // 多変量時系列データを取得
@@ -1333,14 +1389,18 @@ async function initTimeseriesPageV2() {
                         variables: variables,
                         aggregation: aggregation,
                         x_axis_type: xAxisType,
+                        date_from: dateFrom,
+                        date_to: dateTo,
                     }),
                 }),
-                // 使用回数モードではアノテーション（日付ベース）は表示しない
-                (showAnnotations.checked && xAxisType === 'time') ? fetchAPI('/annotations', {
+                // 使用回数モード以外ではアノテーション（日付ベース）を表示
+                (showAnnotations.checked && xAxisType !== 'usage') ? fetchAPI('/annotations', {
                     method: 'POST',
                     body: JSON.stringify({
                         machine_ids: machineIds,
                         months: 12,
+                        date_from: dateFrom,
+                        date_to: dateTo,
                     }),
                 }) : Promise.resolve([]),
             ]);
@@ -1547,7 +1607,8 @@ async function initHistogramPageV2() {
     const form = document.getElementById('histogramForm');
     const seriesSelect = document.getElementById('hist-series');
     const modelSelect = document.getElementById('hist-model');
-    const monthSelect = document.getElementById('hist-month');
+    const dateFromInput = document.getElementById('hist-date-from');
+    const dateToInput = document.getElementById('hist-date-to');
     const categorySelect = document.getElementById('hist-category');
     const characteristicSelect = document.getElementById('hist-characteristic');
     const aggregationSelect = document.getElementById('hist-aggregation');
@@ -1572,7 +1633,13 @@ async function initHistogramPageV2() {
     populateSelect('hist-series', series);
     populateSelect('hist-category', categories);
     populateSelect('hist-aggregation', aggregations);
-    populateSelect('hist-month', months);
+
+    // 日付入力の初期値設定（本日から7日前まで）
+    const today = new Date();
+    const weekAgo = new Date(today);
+    weekAgo.setDate(today.getDate() - 7);
+    if (dateFromInput) dateFromInput.value = weekAgo.toISOString().split('T')[0];
+    if (dateToInput) dateToInput.value = today.toISOString().split('T')[0];
 
     // 散布図用のカテゴリー
     if (scatterXCategory) {
@@ -1780,30 +1847,46 @@ async function initHistogramPageV2() {
         }
     });
 
-    // 詳細テーブルを閉じる
-    const closeDetailBtn = document.getElementById('closeDetailBtn');
-    if (closeDetailBtn) {
-        closeDetailBtn.addEventListener('click', () => {
-            const dataGridArea = document.getElementById('dataGridArea');
-            if (dataGridArea) {
-                dataGridArea.style.display = 'none';
-            }
-        });
-    }
+    // 詳細テーブル管理初期化
+    DetailTableManager.init();
 
     async function loadDistributionData() {
         const selectedMachines = parseMachineIds(machinesTextarea.value);
+
+        const dateFrom = dateFromInput?.value;
+        const dateTo = dateToInput?.value;
+
+        // 日付範囲のバリデーション
+        if (!dateFrom || !dateTo) {
+            alert('対象期間を入力してください');
+            return;
+        }
+
+        const fromDate = new Date(dateFrom);
+        const toDate = new Date(dateTo);
+        const diffDays = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24));
+
+        if (diffDays < 0) {
+            alert('終了日は開始日以降に設定してください');
+            return;
+        }
+
+        if (diffDays > 31) {
+            alert('対象期間は最大31日間までです');
+            return;
+        }
 
         const baseParams = {
             model: modelSelect.value,
             category: categorySelect.value,
             characteristic_id: characteristicSelect.value,
             aggregation: aggregationSelect.value,
-            target_month: monthSelect.value,
+            target_date_from: dateFrom,
+            target_date_to: dateTo,
         };
 
         if (!baseParams.model || !baseParams.category || !baseParams.characteristic_id ||
-            !baseParams.aggregation || !baseParams.target_month) {
+            !baseParams.aggregation) {
             alert('必須条件をすべて選択してください');
             return;
         }
@@ -1820,16 +1903,21 @@ async function initHistogramPageV2() {
 
             distributionStateV2.data = histogramData;
 
+            // 日付範囲の終了日から月を算出（散布図・箱ひげ図用）
+            const targetMonth = baseParams.target_date_to.substring(0, 7);  // "YYYY-MM" 形式
+
             // 散布図データを取得（散布図タブ用）
             if (scatterXCategory?.value && scatterXCharacteristic?.value) {
                 const scatterData = await fetchAPI('/scatter', {
                     method: 'POST',
                     body: JSON.stringify({
-                        ...baseParams,
+                        model: baseParams.model,
                         x_category: scatterXCategory.value,
                         x_characteristic_id: scatterXCharacteristic.value,
                         y_category: baseParams.category,
                         y_characteristic_id: baseParams.characteristic_id,
+                        aggregation: baseParams.aggregation,
+                        target_month: targetMonth,
                         selected_machine_ids: selectedMachines.length > 0 ? selectedMachines : null,
                     }),
                 });
@@ -1846,7 +1934,7 @@ async function initHistogramPageV2() {
                         category: baseParams.category,
                         characteristic_id: baseParams.characteristic_id,
                         aggregation: baseParams.aggregation,
-                        target_month: baseParams.target_month,
+                        target_month: targetMonth,
                     }),
                 });
                 distributionStateV2.boxplotData = boxplotData;
@@ -2022,29 +2110,153 @@ function renderHistogramChartV2(ctx, data) {
     });
 }
 
-// ヒストグラム詳細テーブル表示
-function showHistogramDetailTable(data, minValue, maxValue) {
-    const dataGridArea = document.getElementById('dataGridArea');
-    const detailTableBody = document.getElementById('detailTableBody');
-    const cardTitle = dataGridArea?.querySelector('.card-title');
+/* ========================================
+   詳細データテーブル管理
+   ======================================== */
+const DetailTableManager = {
+    data: [],
+    currentPage: 1,
+    pageSize: 20,
+    sortState: { column: 'value', direction: 'desc' },
+    title: '',
 
-    if (!dataGridArea || !detailTableBody) return;
+    init() {
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+        const pageSizeSelect = document.getElementById('pageSizeSelect');
+        const pageJumpInput = document.getElementById('pageJumpInput');
+        const dlBtn = document.getElementById('downloadDataBtn');
+        const closeBtn = document.getElementById('closeDetailBtn');
 
-    // タイトル更新
-    if (cardTitle) {
-        cardTitle.textContent = `選択データ詳細（${minValue} ～ ${maxValue}）: ${data.length}件`;
-    }
+        if (prevBtn) prevBtn.addEventListener('click', () => this.changePage(-1));
+        if (nextBtn) nextBtn.addEventListener('click', () => this.changePage(1));
+        if (pageSizeSelect) pageSizeSelect.addEventListener('change', (e) => this.setPageSize(Number(e.target.value)));
+        if (pageJumpInput) {
+            pageJumpInput.addEventListener('change', (e) => this.jumpToPage(Number(e.target.value)));
+            pageJumpInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') this.jumpToPage(Number(e.target.value));
+            });
+        }
+        if (dlBtn) dlBtn.addEventListener('click', () => this.downloadCSV());
+        if (closeBtn) closeBtn.addEventListener('click', () => {
+            const area = document.getElementById('dataGridArea');
+            if (area) area.style.display = 'none';
+        });
 
-    // テーブルをクリア
-    detailTableBody.innerHTML = '';
+        // ソートヘッダー
+        document.querySelectorAll('.sortable-header').forEach(th => {
+            th.addEventListener('click', () => {
+                const column = th.dataset.column;
+                if (column) this.toggleSort(column);
+            });
+        });
+    },
 
-    if (data.length === 0) {
-        detailTableBody.innerHTML = '<tr><td colspan="2" class="text-center">該当するデータがありません</td></tr>';
-    } else {
-        // 値でソート
-        const sortedData = [...data].sort((a, b) => a.value - b.value);
+    setData(data, title) {
+        this.data = [...data]; // ソート用にコピー
+        this.title = title || '詳細データ';
+        this.currentPage = 1;
+        // デフォルトソート（値の降順）
+        this.sortState = { column: 'value', direction: 'desc' };
+        this.applySort();
+        this.render();
+    },
 
-        sortedData.forEach(item => {
+    setPageSize(size) {
+        this.pageSize = size;
+        this.currentPage = 1;
+        this.render();
+    },
+
+    changePage(delta) {
+        const totalPages = Math.ceil(this.data.length / this.pageSize) || 1;
+        const newPage = this.currentPage + delta;
+        if (newPage >= 1 && newPage <= totalPages) {
+            this.currentPage = newPage;
+            this.render();
+        }
+    },
+
+    jumpToPage(page) {
+        const totalPages = Math.ceil(this.data.length / this.pageSize) || 1;
+        if (page >= 1 && page <= totalPages) {
+            this.currentPage = page;
+            this.render();
+        } else {
+            // 無効な入力の場合は現在のページに戻して再描画
+            this.render();
+        }
+    },
+
+    toggleSort(column) {
+        if (this.sortState.column === column) {
+            this.sortState.direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortState.column = column;
+            this.sortState.direction = 'desc'; // 新しい列は降順から
+        }
+        this.applySort();
+        this.render();
+    },
+
+    applySort() {
+        const { column, direction } = this.sortState;
+        this.data.sort((a, b) => {
+            let valA = a[column];
+            let valB = b[column];
+
+            if (typeof valA === 'string') valA = valA.toLowerCase();
+            if (typeof valB === 'string') valB = valB.toLowerCase();
+
+            if (valA < valB) return direction === 'asc' ? -1 : 1;
+            if (valA > valB) return direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    },
+
+    render() {
+        const dataGridArea = document.getElementById('dataGridArea');
+        const detailTableBody = document.getElementById('detailTableBody');
+        const cardTitle = dataGridArea?.querySelector('.card-title');
+        const detailDataCount = document.getElementById('detailDataCount');
+        const pageInfo = document.getElementById('pageInfo');
+        const pageJumpInput = document.getElementById('pageJumpInput');
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+        const paginationArea = document.getElementById('detailPagination');
+
+        if (!dataGridArea || !detailTableBody) return;
+
+        // タイトルと件数更新
+        if (cardTitle) cardTitle.textContent = this.title;
+        if (detailDataCount) detailDataCount.textContent = `${this.data.length.toLocaleString()}件`;
+
+        // ヘッダーのソート状態表示更新
+        document.querySelectorAll('.sortable-header').forEach(th => {
+            th.classList.remove('asc', 'desc');
+            if (th.dataset.column === this.sortState.column) {
+                th.classList.add(this.sortState.direction);
+            }
+        });
+
+        // データがない場合
+        if (this.data.length === 0) {
+            detailTableBody.innerHTML = '<tr><td colspan="2" class="text-center">該当するデータがありません</td></tr>';
+            if (paginationArea) paginationArea.style.display = 'none';
+            dataGridArea.style.display = '';
+            return;
+        }
+
+        // ページネーション計算
+        const totalItems = this.data.length;
+        const totalPages = Math.ceil(totalItems / this.pageSize);
+        const startIndex = (this.currentPage - 1) * this.pageSize;
+        const endIndex = Math.min(startIndex + this.pageSize, totalItems);
+        const paginatedData = this.data.slice(startIndex, endIndex);
+
+        // テーブル更新
+        detailTableBody.innerHTML = '';
+        paginatedData.forEach(item => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${item.machine_id}</td>
@@ -2052,46 +2264,47 @@ function showHistogramDetailTable(data, minValue, maxValue) {
             `;
             detailTableBody.appendChild(tr);
         });
-    }
 
-    // 詳細エリアを表示
-    dataGridArea.style.display = '';
+        // ページネーションUI更新
+        if (paginationArea) paginationArea.style.display = 'flex';
+        if (pageInfo) pageInfo.textContent = `${this.currentPage} / ${totalPages} ページ`;
+
+        if (pageJumpInput) {
+            pageJumpInput.max = totalPages;
+            pageJumpInput.value = this.currentPage;
+        }
+
+        if (prevBtn) prevBtn.disabled = this.currentPage === 1;
+        if (nextBtn) nextBtn.disabled = this.currentPage === totalPages;
+
+        // エリア表示
+        dataGridArea.style.display = '';
+    },
+
+    downloadCSV() {
+        const headers = ['機番', '値'];
+        const rows = this.data.map(item => `${item.machine_id},${item.value}`);
+        const csvContent = [headers.join(','), ...rows].join('\n');
+
+        const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `data_export_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+};
+
+// ヒストグラム詳細テーブル表示（互換性のため）
+function showHistogramDetailTable(data, minValue, maxValue) {
+    DetailTableManager.setData(data, `選択データ詳細（${minValue} ～ ${maxValue}）`);
 }
 
-// 折れ線グラフ詳細テーブル表示
+// 折れ線グラフ詳細テーブル表示（互換性のため）
 function showLinechartDetailTable(data, label) {
-    const dataGridArea = document.getElementById('dataGridArea');
-    const detailTableBody = document.getElementById('detailTableBody');
-    const cardTitle = dataGridArea?.querySelector('.card-title');
-
-    if (!dataGridArea || !detailTableBody) return;
-
-    // タイトル更新
-    if (cardTitle) {
-        cardTitle.textContent = `選択データ詳細（${label}）: ${data.length}件`;
-    }
-
-    // テーブルをクリア
-    detailTableBody.innerHTML = '';
-
-    if (data.length === 0) {
-        detailTableBody.innerHTML = '<tr><td colspan="2" class="text-center">該当するデータがありません</td></tr>';
-    } else {
-        // 値でソート
-        const sortedData = [...data].sort((a, b) => a.value - b.value);
-
-        sortedData.forEach(item => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${item.machine_id}</td>
-                <td>${item.value.toFixed(2)}</td>
-            `;
-            detailTableBody.appendChild(tr);
-        });
-    }
-
-    // 詳細エリアを表示
-    dataGridArea.style.display = '';
+    DetailTableManager.setData(data, `選択データ詳細（${label}）`);
 }
 
 function renderScatterChartV2(ctx, data) {

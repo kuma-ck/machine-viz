@@ -66,6 +66,9 @@
     --spacing-lg: 1.5rem;
     --spacing-xl: 2rem;
     --spacing-2xl: 3rem;
+
+    /* その他 */
+    --background-hover: #e2e8f0;
 }
 
 /* ========================================
@@ -539,6 +542,23 @@ body {
     flex: 1;
 }
 
+.date-range-inputs {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.date-range-inputs .form-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.date-range-separator {
+    color: var(--color-text-muted);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
 .range-separator {
     color: var(--color-text-muted);
     font-weight: 500;
@@ -720,6 +740,11 @@ body {
     gap: var(--spacing-md);
 }
 
+.radio-group--vertical {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
 .radio-item {
     display: flex;
     align-items: center;
@@ -819,9 +844,66 @@ body {
     margin-top: var(--spacing-md);
 }
 
+.table-scrollable {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.pagination-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--spacing-md);
+    margin-top: var(--spacing-md);
+    border-top: 1px solid var(--border-color);
+}
+
+.pagination-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.pagination-buttons {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+/* ソートヘッダー */
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 20px;
+}
+
+.sortable-header:hover {
+    background-color: var(--background-hover);
+}
+
+.sort-icon {
+    display: inline-block;
+    margin-left: 5px;
+    font-size: 0.8em;
+    color: var(--text-tertiary);
+}
+
+.sortable-header.asc .sort-icon::after {
+    content: '▲';
+    color: var(--primary-color);
+}
+
+.sortable-header.desc .sort-icon::after {
+    content: '▼';
+    color: var(--primary-color);
+}
+
 .data-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: var(--font-size-sm);
 }
 
@@ -838,6 +920,7 @@ body {
     color: var(--color-text-secondary);
     position: sticky;
     top: 0;
+    z-index: 100;
 }
 
 .data-table tbody tr {

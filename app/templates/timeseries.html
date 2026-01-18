@@ -27,16 +27,29 @@
                 <div class="form-section">
                     <h3 class="form-section-title">X軸の種類</h3>
                     <div class="form-group">
-                        <div class="radio-group">
+                        <div class="radio-group radio-group--vertical">
                             <label class="radio-item">
-                                <input type="radio" name="xAxisType" id="xAxisTime" value="time" checked>
-                                <span>時間（月次）</span>
+                                <input type="radio" name="xAxisType" id="xAxisTimeMonth" value="time_month" checked>
+                                <span>時間（月単位）</span>
+                            </label>
+                            <label class="radio-item">
+                                <input type="radio" name="xAxisType" id="xAxisTimeDay" value="time_day">
+                                <span>時間（日単位）</span>
                             </label>
                             <label class="radio-item">
                                 <input type="radio" name="xAxisType" id="xAxisUsage" value="usage">
                                 <span>使用回数</span>
                             </label>
                         </div>
+                    </div>
+                    <div class="form-group" id="dayRangeGroup" style="display: none;">
+                        <label>表示期間</label>
+                        <div class="date-range-inputs">
+                            <input type="date" id="ts-date-from" class="form-input">
+                            <span class="date-range-separator">～</span>
+                            <input type="date" id="ts-date-to" class="form-input">
+                        </div>
+                        <span class="form-hint">日単位表示の場合は期間を指定してください</span>
                     </div>
                 </div>
 

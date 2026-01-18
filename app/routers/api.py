@@ -55,7 +55,9 @@ class MultiTimeseriesRequest(BaseModel):
     machine_ids: list[str]
     variables: list[dict[str, str]]
     aggregation: str
-    x_axis_type: str = "time"
+    x_axis_type: str = "time_month"  # "time_month" | "time_day" | "usage"
+    date_from: str | None = None  # 日単位表示時の開始日
+    date_to: str | None = None    # 日単位表示時の終了日
 
 
 class HistogramRequest(BaseModel):
@@ -63,7 +65,8 @@ class HistogramRequest(BaseModel):
     category: str
     characteristic_id: str
     aggregation: str
-    target_month: str
+    target_date_from: str
+    target_date_to: str
     selected_machine_ids: list[str] | None = None
 
 
@@ -104,6 +107,8 @@ class AnnotationsRequest(BaseModel):
     """アノテーションリクエスト"""
     machine_ids: list[str]
     months: int = 12
+    date_from: str | None = None
+    date_to: str | None = None
 
 
 # マスターデータ取得
@@ -196,6 +201,8 @@ def get_multi_timeseries(req: MultiTimeseriesRequest) -> dict[str, Any]:
         variables=req.variables,
         aggregation=req.aggregation,
         x_axis_type=req.x_axis_type,
+        date_from=req.date_from,
+        date_to=req.date_to,
     )
 
 
@@ -205,6 +212,8 @@ def get_annotations(req: AnnotationsRequest) -> list[dict[str, Any]]:
     return data_service.get_annotations(
         machine_ids=req.machine_ids,
         months=req.months,
+        date_from=req.date_from,
+        date_to=req.date_to,
     )
 
 
@@ -217,7 +226,8 @@ def get_histogram(req: HistogramRequest) -> dict[str, Any]:
         category=req.category,
         characteristic_id=req.characteristic_id,
         aggregation=req.aggregation,
-        target_month=req.target_month,
+        target_date_from=req.target_date_from,
+        target_date_to=req.target_date_to,
         selected_machine_ids=req.selected_machine_ids,
     )
 

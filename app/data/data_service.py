@@ -128,6 +128,8 @@ def get_multi_timeseries(
     variables: list[dict[str, str]],
     aggregation: str,
     x_axis_type: str = "time",
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> dict[str, Any]:
     """多変量時系列データを取得"""
     return dummy.generate_multi_timeseries_data(
@@ -135,14 +137,23 @@ def get_multi_timeseries(
         variables=variables,
         aggregation=aggregation,
         x_axis_type=x_axis_type,
+        date_from=date_from,
+        date_to=date_to,
     )
 
 
-def get_annotations(machine_ids: list[str], months: int = 12) -> list[dict[str, Any]]:
+def get_annotations(
+    machine_ids: list[str],
+    months: int = 12,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[dict[str, Any]]:
     """アノテーションを取得"""
     return ann_module.get_annotations_for_timeseries(
         machine_ids=machine_ids,
         months=months,
+        date_from=date_from,
+        date_to=date_to,
     )
 
 
@@ -151,7 +162,8 @@ def get_histogram(
     category: str,
     characteristic_id: str,
     aggregation: str,
-    target_month: str,
+    target_date_from: str,
+    target_date_to: str,
     selected_machine_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """ヒストグラムデータを取得"""
@@ -160,7 +172,8 @@ def get_histogram(
         category=category,
         characteristic_id=characteristic_id,
         aggregation=aggregation,
-        target_month=target_month,
+        target_date_from=target_date_from,
+        target_date_to=target_date_to,
         selected_machine_ids=selected_machine_ids,
     )
 
