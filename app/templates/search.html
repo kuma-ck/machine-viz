@@ -12,6 +12,17 @@
     <!-- 検索フォーム -->
     <div class="card search-form-card">
         <h2 class="card-title">検索条件</h2>
+
+        <!-- プリセット操作UI -->
+        <div class="preset-controls">
+            <select id="presetSelect" class="form-select">
+                <option value="">-- 保存済みプリセット --</option>
+            </select>
+            <button type="button" id="applyPresetBtn" class="btn btn-outline btn-sm">適用</button>
+            <button type="button" id="savePresetBtn" class="btn btn-outline btn-sm">💾 保存</button>
+            <button type="button" id="deletePresetBtn" class="btn btn-outline btn-sm">🗑️</button>
+        </div>
+
         <form id="searchForm" class="search-form">
             <div class="form-grid">
                 <div class="form-group">
@@ -128,6 +139,21 @@
                 <tbody id="resultsBody">
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- プリセット保存モーダル -->
+<div id="savePresetModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 class="modal-title">プリセットを保存</h3>
+        <div class="form-group">
+            <label for="presetNameInput">プリセット名</label>
+            <input type="text" id="presetNameInput" class="form-input" placeholder="例: A機種_2024年製">
+        </div>
+        <div class="modal-actions">
+            <button type="button" id="cancelSaveBtn" class="btn btn-outline">キャンセル</button>
+            <button type="button" id="confirmSaveBtn" class="btn btn-primary">保存</button>
         </div>
     </div>
 </div>

@@ -14,6 +14,139 @@ const state = {
     itemsPerPage: 20,
 };
 
+// ========================================
+// フィルタプリセット管理
+// ========================================
+const FilterPresetManager = {
+    storageKey: 'machine-viz-presets',
+
+    getAll() {
+        try {
+            const data = localStorage.getItem(this.storageKey);
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            console.error('Failed to load presets', e);
+            return [];
+        }
+    },
+
+    save(name, page, data) {
+        const presets = this.getAll();
+        const existing = presets.findIndex(p => p.name === name && p.page === page);
+        const preset = {
+            name,
+            page,
+            createdAt: new Date().toISOString(),
+            data
+        };
+        if (existing >= 0) {
+            presets[existing] = preset;
+        } else {
+            presets.push(preset);
+        }
+        localStorage.setItem(this.storageKey, JSON.stringify(presets));
+        return preset;
+    },
+
+    delete(name, page) {
+        const presets = this.getAll().filter(p => !(p.name === name && p.page === page));
+        localStorage.setItem(this.storageKey, JSON.stringify(presets));
+    },
+
+    get(name, page) {
+        return this.getAll().find(p => p.name === name && p.page === page);
+    },
+
+    getByPage(page) {
+        return this.getAll().filter(p => p.page === page);
+    }
+};
+
+// プリセットUIヘルパー
+function initPresetUI(page, getCurrentFilters, applyFilters) {
+    const presetSelect = document.getElementById('presetSelect');
+    const applyBtn = document.getElementById('applyPresetBtn');
+    const saveBtn = document.getElementById('savePresetBtn');
+    const deleteBtn = document.getElementById('deletePresetBtn');
+    const modal = document.getElementById('savePresetModal');
+    const presetNameInput = document.getElementById('presetNameInput');
+    const confirmSaveBtn = document.getElementById('confirmSaveBtn');
+    const cancelSaveBtn = document.getElementById('cancelSaveBtn');
+
+    if (!presetSelect) return; // UIが存在しない場合はスキップ
+
+    // プリセット一覧を更新
+    function refreshPresetList() {
+        const presets = FilterPresetManager.getByPage(page);
+        presetSelect.innerHTML = '<option value="">-- 保存済みプリセット --</option>';
+        presets.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.name;
+            opt.textContent = p.name;
+            presetSelect.appendChild(opt);
+        });
+    }
+
+    // 適用ボタン
+    if (applyBtn) {
+        applyBtn.addEventListener('click', () => {
+            const name = presetSelect.value;
+            if (!name) return;
+            const preset = FilterPresetManager.get(name, page);
+            if (preset) {
+                applyFilters(preset.data);
+            }
+        });
+    }
+
+    // 保存ボタン → モーダル表示
+    if (saveBtn && modal) {
+        saveBtn.addEventListener('click', () => {
+            modal.style.display = 'flex';
+            presetNameInput.value = '';
+            presetNameInput.focus();
+        });
+    }
+
+    // 保存確定
+    if (confirmSaveBtn && modal) {
+        confirmSaveBtn.addEventListener('click', () => {
+            const name = presetNameInput.value.trim();
+            if (!name) {
+                alert('プリセット名を入力してください');
+                return;
+            }
+            const data = getCurrentFilters();
+            FilterPresetManager.save(name, page, data);
+            modal.style.display = 'none';
+            refreshPresetList();
+            presetSelect.value = name;
+        });
+    }
+
+    // キャンセル
+    if (cancelSaveBtn && modal) {
+        cancelSaveBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+    }
+
+    // 削除ボタン
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            const name = presetSelect.value;
+            if (!name) return;
+            if (confirm(`プリセット「${name}」を削除しますか？`)) {
+                FilterPresetManager.delete(name, page);
+                refreshPresetList();
+            }
+        });
+    }
+
+    // 初期化
+    refreshPresetList();
+}
+
 // Chart.jsのデフォルト設定（ライトモード）
 Chart.defaults.color = '#64748b';
 Chart.defaults.borderColor = 'rgba(0, 0, 0, 0.1)';
@@ -167,6 +300,44 @@ async function initSearchPage() {
     populateSelect('manufacture_month_to', months, '終了月');
     populateSelect('operation_start_month_from', months, '開始月');
     populateSelect('operation_start_month_to', months, '終了月');
+
+    // プリセット機能の初期化
+    initPresetUI(
+        'search',
+        // getCurrentFilters
+        () => ({
+            series: seriesSelect.value,
+            models: Array.from(modelList.querySelectorAll('input:checked')).map(cb => cb.value),
+            mfgMonthFrom: mfgMonthFrom.value,
+            mfgMonthTo: mfgMonthTo.value,
+            opMonthFrom: opMonthFrom.value,
+            opMonthTo: opMonthTo.value
+        }),
+        // applyFilters
+        async (data) => {
+            if (data.series) {
+                seriesSelect.value = data.series;
+                const models = await getModels(data.series);
+                renderModelCheckboxes(models);
+                // 選択状態を復元
+                if (data.models && data.models.length > 0) {
+                    data.models.forEach(m => {
+                        const cb = modelList.querySelector(`input[value="${m}"]`);
+                        if (cb) {
+                            cb.checked = true;
+                            cb.closest('.multi-select-item')?.classList.add('checked');
+                        }
+                    });
+                }
+            }
+            if (data.mfgMonthFrom) mfgMonthFrom.value = data.mfgMonthFrom;
+            if (data.mfgMonthTo) mfgMonthTo.value = data.mfgMonthTo;
+            if (data.opMonthFrom) opMonthFrom.value = data.opMonthFrom;
+            if (data.opMonthTo) opMonthTo.value = data.opMonthTo;
+            // 自動で検索実行
+            searchForm.dispatchEvent(new Event('submit'));
+        }
+    );
 
     // 機種番号チェックボックスを生成
     function renderModelCheckboxes(models) {
@@ -1137,6 +1308,62 @@ async function initTimeseriesPageV2() {
         getAggregations(),
     ]);
 
+    // プリセット機能の初期化
+    initPresetUI(
+        'timeseries',
+        // getCurrentFilters
+        () => {
+            const variables = Array.from(variableList.querySelectorAll('.variable-item')).map(item => ({
+                category: item.querySelector('.var-category')?.value,
+                characteristic: item.querySelector('.var-characteristic')?.value
+            }));
+            return {
+                machines: machinesTextarea.value,
+                xAxisType: document.querySelector('input[name="xAxisType"]:checked')?.value,
+                dateFrom: dateFromInput?.value,
+                dateTo: dateToInput?.value,
+                showAnnotations: showAnnotations?.checked,
+                variables
+            };
+        },
+        // applyFilters
+        async (data) => {
+            if (data.machines) machinesTextarea.value = data.machines;
+            if (data.xAxisType) {
+                const radio = document.querySelector(`input[name="xAxisType"][value="${data.xAxisType}"]`);
+                if (radio) {
+                    radio.checked = true;
+                    handleXAxisChange();
+                }
+            }
+            if (data.dateFrom && dateFromInput) dateFromInput.value = data.dateFrom;
+            if (data.dateTo && dateToInput) dateToInput.value = data.dateTo;
+            if (data.showAnnotations !== undefined && showAnnotations) {
+                showAnnotations.checked = data.showAnnotations;
+            }
+            // 変数を復元
+            if (data.variables && data.variables.length > 0) {
+                variableList.innerHTML = '';
+                for (const v of data.variables) {
+                    await addVariable();
+                    const items = variableList.querySelectorAll('.variable-item');
+                    const lastItem = items[items.length - 1];
+                    if (v.category) {
+                        const catSel = lastItem.querySelector('.var-category');
+                        catSel.value = v.category;
+                        const chars = await getCharacteristics(v.category);
+                        const charSel = lastItem.querySelector('.var-characteristic');
+                        charSel.innerHTML = '<option value="">特性値ID</option>' +
+                            chars.map(c => `<option value="${c}">${c}</option>`).join('');
+                        if (v.characteristic) charSel.value = v.characteristic;
+                    }
+                }
+            }
+            // 自動でグラフ表示
+            form.dispatchEvent(new Event('submit'));
+        }
+    );
+
     // 変数テンプレート
     let variableCounter = 0;
 
@@ -1640,6 +1867,52 @@ async function initHistogramPageV2() {
     weekAgo.setDate(today.getDate() - 7);
     if (dateFromInput) dateFromInput.value = weekAgo.toISOString().split('T')[0];
     if (dateToInput) dateToInput.value = today.toISOString().split('T')[0];
+
+    // プリセット機能の初期化
+    initPresetUI(
+        'histogram',
+        // getCurrentFilters: 現在のフォーム値を取得
+        () => ({
+            series: seriesSelect.value,
+            model: modelSelect.value,
+            dateFrom: dateFromInput?.value,
+            dateTo: dateToInput?.value,
+            category: categorySelect.value,
+            characteristic: characteristicSelect.value,
+            aggregation: aggregationSelect.value,
+            machines: machinesTextarea?.value || '',
+            chartType: distributionStateV2.chartType
+        }),
+        // applyFilters: プリセットをフォームに適用
+        async (data) => {
+            if (data.series) {
+                seriesSelect.value = data.series;
+                const models = await getModels(data.series);
+                populateSelect('hist-model', models);
+            }
+            if (data.model) modelSelect.value = data.model;
+            if (data.dateFrom && dateFromInput) dateFromInput.value = data.dateFrom;
+            if (data.dateTo && dateToInput) dateToInput.value = data.dateTo;
+            if (data.category) {
+                categorySelect.value = data.category;
+                const chars = await getCharacteristics(data.category);
+                populateSelect('hist-characteristic', chars);
+            }
+            if (data.characteristic) characteristicSelect.value = data.characteristic;
+            if (data.aggregation) aggregationSelect.value = data.aggregation;
+            if (data.machines && machinesTextarea) machinesTextarea.value = data.machines;
+            if (data.chartType) {
+                distributionStateV2.chartType = data.chartType;
+                const tab = document.querySelector(`.chart-type-tab[data-chart-type="${data.chartType}"]`);
+                if (tab) {
+                    chartTypeTabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                }
+            }
+            // 自動でグラフ表示
+            await loadDistributionData();
+        }
+    );
 
     // 散布図用のカテゴリー
     if (scatterXCategory) {

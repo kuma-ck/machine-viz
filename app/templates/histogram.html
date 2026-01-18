@@ -13,6 +13,17 @@
     <aside class="sidebar" id="sidebar">
         <div class="card condition-card">
             <h2 class="card-title">条件設定</h2>
+
+            <!-- プリセット操作UI -->
+            <div class="preset-controls">
+                <select id="presetSelect" class="form-select">
+                    <option value="">-- 保存済みプリセット --</option>
+                </select>
+                <button type="button" id="applyPresetBtn" class="btn btn-outline btn-sm">適用</button>
+                <button type="button" id="savePresetBtn" class="btn btn-outline btn-sm">💾 保存</button>
+                <button type="button" id="deletePresetBtn" class="btn btn-outline btn-sm">🗑️</button>
+            </div>
+
             <form id="histogramForm" class="condition-form" novalidate>
                 <div class="form-section">
                     <h3 class="form-section-title">基本条件</h3>
@@ -237,6 +248,21 @@
                     <button type="button" class="btn btn-outline btn-sm" id="nextPageBtn" disabled>→</button>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- プリセット保存モーダル -->
+<div id="savePresetModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 class="modal-title">プリセットを保存</h3>
+        <div class="form-group">
+            <label for="presetNameInput">プリセット名</label>
+            <input type="text" id="presetNameInput" class="form-input" placeholder="例: A機種_月次チェック">
+        </div>
+        <div class="modal-actions">
+            <button type="button" id="cancelSaveBtn" class="btn btn-outline">キャンセル</button>
+            <button type="button" id="confirmSaveBtn" class="btn btn-primary">保存</button>
         </div>
     </div>
 </div>
