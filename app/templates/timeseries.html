@@ -181,6 +181,16 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTimeseriesPageV2();
+
+        // 不具合分析からの連携をチェック
+        const savedMachines = localStorage.getItem('defects-selected-machines');
+        if (savedMachines) {
+            const machinesTextarea = document.getElementById('ts-machines');
+            if (machinesTextarea) {
+                machinesTextarea.value = savedMachines;
+            }
+            localStorage.removeItem('defects-selected-machines');
+        }
     });
 </script>
 {% endblock %}

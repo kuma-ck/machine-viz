@@ -15,6 +15,7 @@ from app.models.base import (
     Aggregation,
 )
 from app.models.user import User
+from app.models.defect import Defect
 
 __all__ = [
     "Series",
@@ -26,5 +27,5 @@ __all__ = [
     "Annotation",
     "Aggregation",
     "User",
+    "Defect",
 ]
-

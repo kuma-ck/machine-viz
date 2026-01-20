@@ -183,9 +183,18 @@ def sample_machines(req: SampleRequest) -> list[str]:
 
 # 時系列データ
 @router.post("/timeseries")
-def get_timeseries(req: TimeseriesRequest) -> dict[str, Any]:
+async def get_timeseries(req: TimeseriesRequest, db: AsyncSession | None = Depends(get_optional_db)) -> dict[str, Any]:
     """時系列データを取得"""
-    return data_service.get_timeseries(
+    if settings.use_dummy_data or db is None:
+        return data_service.get_timeseries(
+            machine_ids=req.machine_ids,
+            category=req.category,
+            characteristic_id=req.characteristic_id,
+            aggregation=req.aggregation,
+        )
+    from app.data import repository
+    return await repository.get_timeseries_data(
+        session=db,
         machine_ids=req.machine_ids,
         category=req.category,
         characteristic_id=req.characteristic_id,
@@ -194,9 +203,20 @@ def get_timeseries(req: TimeseriesRequest) -> dict[str, Any]:
 
 
 @router.post("/timeseries/multi")
-def get_multi_timeseries(req: MultiTimeseriesRequest) -> dict[str, Any]:
+async def get_multi_timeseries(req: MultiTimeseriesRequest, db: AsyncSession | None = Depends(get_optional_db)) -> dict[str, Any]:
     """多変量時系列データを取得"""
-    return data_service.get_multi_timeseries(
+    if settings.use_dummy_data or db is None:
+        return data_service.get_multi_timeseries(
+            machine_ids=req.machine_ids,
+            variables=req.variables,
+            aggregation=req.aggregation,
+            x_axis_type=req.x_axis_type,
+            date_from=req.date_from,
+            date_to=req.date_to,
+        )
+    from app.data import repository
+    return await repository.get_multi_timeseries_data(
+        session=db,
         machine_ids=req.machine_ids,
         variables=req.variables,
         aggregation=req.aggregation,
@@ -207,9 +227,18 @@ def get_multi_timeseries(req: MultiTimeseriesRequest) -> dict[str, Any]:
 
 
 @router.post("/annotations")
-def get_annotations(req: AnnotationsRequest) -> list[dict[str, Any]]:
+async def get_annotations(req: AnnotationsRequest, db: AsyncSession | None = Depends(get_optional_db)) -> list[dict[str, Any]]:
     """アノテーション（イベント情報）を取得"""
-    return data_service.get_annotations(
+    if settings.use_dummy_data or db is None:
+        return data_service.get_annotations(
+            machine_ids=req.machine_ids,
+            months=req.months,
+            date_from=req.date_from,
+            date_to=req.date_to,
+        )
+    from app.data import repository
+    return await repository.get_annotations_data(
+        session=db,
         machine_ids=req.machine_ids,
         months=req.months,
         date_from=req.date_from,
@@ -219,9 +248,21 @@ def get_annotations(req: AnnotationsRequest) -> list[dict[str, Any]]:
 
 # 断面データ
 @router.post("/histogram")
-def get_histogram(req: HistogramRequest) -> dict[str, Any]:
+async def get_histogram(req: HistogramRequest, db: AsyncSession | None = Depends(get_optional_db)) -> dict[str, Any]:
     """断面データを取得"""
-    return data_service.get_histogram(
+    if settings.use_dummy_data or db is None:
+        return data_service.get_histogram(
+            model=req.model,
+            category=req.category,
+            characteristic_id=req.characteristic_id,
+            aggregation=req.aggregation,
+            target_date_from=req.target_date_from,
+            target_date_to=req.target_date_to,
+            selected_machine_ids=req.selected_machine_ids,
+        )
+    from app.data import repository
+    return await repository.get_histogram_data(
+        session=db,
         model=req.model,
         category=req.category,
         characteristic_id=req.characteristic_id,
@@ -233,9 +274,22 @@ def get_histogram(req: HistogramRequest) -> dict[str, Any]:
 
 
 @router.post("/scatter")
-def get_scatter(req: ScatterRequest) -> dict[str, Any]:
+async def get_scatter(req: ScatterRequest, db: AsyncSession | None = Depends(get_optional_db)) -> dict[str, Any]:
     """散布図データを取得"""
-    return data_service.get_scatter(
+    if settings.use_dummy_data or db is None:
+        return data_service.get_scatter(
+            model=req.model,
+            x_category=req.x_category,
+            x_characteristic_id=req.x_characteristic_id,
+            y_category=req.y_category,
+            y_characteristic_id=req.y_characteristic_id,
+            aggregation=req.aggregation,
+            target_month=req.target_month,
+            selected_machine_ids=req.selected_machine_ids,
+        )
+    from app.data import repository
+    return await repository.get_scatter_data(
+        session=db,
         model=req.model,
         x_category=req.x_category,
         x_characteristic_id=req.x_characteristic_id,
@@ -248,15 +302,26 @@ def get_scatter(req: ScatterRequest) -> dict[str, Any]:
 
 
 @router.post("/boxplot")
-def get_boxplot(req: BoxplotRequest) -> dict[str, Any]:
+async def get_boxplot(req: BoxplotRequest, db: AsyncSession | None = Depends(get_optional_db)) -> dict[str, Any]:
     """箱ひげ図データを取得"""
-    return data_service.get_boxplot(
+    if settings.use_dummy_data or db is None:
+        return data_service.get_boxplot(
+            models=req.models,
+            category=req.category,
+            characteristic_id=req.characteristic_id,
+            aggregation=req.aggregation,
+            target_month=req.target_month,
+        )
+    from app.data import repository
+    return await repository.get_boxplot_data(
+        session=db,
         models=req.models,
         category=req.category,
         characteristic_id=req.characteristic_id,
         aggregation=req.aggregation,
         target_month=req.target_month,
     )
+
 
 
 @router.post("/distribution-boxplot")
@@ -272,3 +337,119 @@ def get_distribution_boxplot(req: DistributionBoxplotRequest) -> dict[str, Any]:
         selected_machine_ids=req.selected_machine_ids,
         chart_type=req.chart_type,
     )
+
+
+# ========================================
+# 不具合分析API
+# ========================================
+class DefectTimeseriesRequest(BaseModel):
+    series: str | None = None
+    models: list[str] | None = None  # 複数選択対応
+    date_from: str
+    date_to: str
+    defect_types: list[str] | None = None  # 複数選択対応
+    group_by: str = "month"  # 'month' | 'day'
+
+
+class DefectSummaryRequest(BaseModel):
+    series: str | None = None
+    models: list[str] | None = None  # 複数選択対応
+    date_from: str
+    date_to: str
+    defect_types: list[str] | None = None  # 複数選択対応
+
+
+@router.get("/defect-types")
+async def get_defect_types(db: AsyncSession | None = Depends(get_optional_db)) -> list[str]:
+    """不具合種別マスタを取得"""
+    if settings.use_dummy_data or db is None:
+        from app.data.dummy import get_defect_types
+        return get_defect_types()
+    from app.data import repository
+    return await repository.get_defect_types(db)
+
+
+@router.post("/defects/timeseries")
+async def get_defects_timeseries(req: DefectTimeseriesRequest, db: AsyncSession | None = Depends(get_optional_db)) -> dict[str, Any]:
+    """不具合発生件数の時系列データを取得"""
+    if settings.use_dummy_data or db is None:
+        from app.data.dummy import generate_defect_timeseries
+        return generate_defect_timeseries(
+            series=req.series,
+            models=req.models,
+            date_from=req.date_from,
+            date_to=req.date_to,
+            defect_types=req.defect_types,
+            group_by=req.group_by,
+        )
+    from app.data import repository
+    return await repository.get_defects_timeseries(
+        session=db,
+        series=req.series,
+        models=req.models,
+        date_from=req.date_from,
+        date_to=req.date_to,
+        defect_types=req.defect_types,
+        group_by=req.group_by,
+    )
+
+
+@router.post("/defects/summary")
+async def get_defects_summary(req: DefectSummaryRequest, db: AsyncSession | None = Depends(get_optional_db)) -> dict[str, Any]:
+    """不具合発生件数の集計テーブルデータを取得"""
+    if settings.use_dummy_data or db is None:
+        from app.data.dummy import generate_defect_summary
+        return generate_defect_summary(
+            series=req.series,
+            models=req.models,
+            date_from=req.date_from,
+            date_to=req.date_to,
+            defect_types=req.defect_types,
+        )
+    from app.data import repository
+    return await repository.get_defects_summary(
+        session=db,
+        series=req.series,
+        models=req.models,
+        date_from=req.date_from,
+        date_to=req.date_to,
+        defect_types=req.defect_types,
+    )
+
+
+class DefectMachinesRequest(BaseModel):
+    series: str | None = None
+    models: list[str] | None = None  # 複数選択対応
+    date_from: str
+    date_to: str
+    defect_types: list[str] | None = None  # 複数選択対応
+    target_period: str | None = None  # グラフクリック時：特定期間（"2025-01" or "2025-01-15"）
+    target_defect_type: str | None = None  # グラフクリック時：特定不具合種別
+
+
+@router.post("/defects/machines")
+async def get_defect_machines(req: DefectMachinesRequest, db: AsyncSession | None = Depends(get_optional_db)) -> dict[str, Any]:
+    """不具合発生機番リストを取得"""
+    if settings.use_dummy_data or db is None:
+        from app.data.dummy import generate_defect_machines
+        return generate_defect_machines(
+            series=req.series,
+            models=req.models,
+            date_from=req.date_from,
+            date_to=req.date_to,
+            defect_types=req.defect_types,
+            target_period=req.target_period,
+            target_defect_type=req.target_defect_type,
+        )
+    from app.data import repository
+    return await repository.get_defect_machines(
+        session=db,
+        series=req.series,
+        models=req.models,
+        date_from=req.date_from,
+        date_to=req.date_to,
+        defect_types=req.defect_types,
+        target_period=req.target_period,
+        target_defect_type=req.target_defect_type,
+    )
+

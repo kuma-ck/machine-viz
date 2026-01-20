@@ -1,0 +1,647 @@
+{% extends "base.html" %}
+
+{% block title %}不具合分析 - Machine Viz{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">不具合分析</h1>
+    <p class="page-description">市場での不具合発生情報を時系列で可視化・集計します</p>
+</div>
+
+<div class="dashboard-layout">
+    <!-- サイドバー（条件設定） -->
+    <aside class="sidebar" id="sidebar">
+        <div class="card condition-card">
+            <h2 class="card-title">条件設定</h2>
+            <form id="defectsForm" class="condition-form" novalidate>
+                <div class="form-section">
+                    <h3 class="form-section-title">対象機種</h3>
+                    <div class="form-group">
+                        <label for="defect-series">機種シリーズ</label>
+                        <select id="defect-series" class="form-select">
+                            <option value="">すべて</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>機種番号（複数選択可）</label>
+                        <div id="defect-model-list" class="checkbox-list"
+                            style="max-height: 120px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--spacing-xs);">
+                            <label class="form-hint">シリーズを選択してください</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3 class="form-section-title">期間</h3>
+                    <div class="form-group">
+                        <label for="defect-date-from">開始日</label>
+                        <input type="date" id="defect-date-from" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="defect-date-to">終了日</label>
+                        <input type="date" id="defect-date-to" class="form-input">
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3 class="form-section-title">不具合種別（複数選択可）</h3>
+                    <div class="form-group">
+                        <div id="defect-type-list" class="checkbox-list"
+                            style="max-height: 150px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--spacing-xs);">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3 class="form-section-title">表示単位</h3>
+                    <div class="form-group">
+                        <div class="radio-group">
+                            <label class="radio-item">
+                                <input type="radio" name="groupBy" value="month" checked>
+                                <span>月次</span>
+                            </label>
+                            <label class="radio-item">
+                                <input type="radio" name="groupBy" value="day">
+                                <span>日次</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="btn-icon">📊</span>
+                        グラフ表示
+                    </button>
+                </div>
+            </form>
+        </div>
+    </aside>
+
+    <!-- メインチャートエリア -->
+    <div class="main-chart-area">
+        <div class="card chart-card" id="chartCard" style="display: none;">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <h2 class="card-title">不具合発生推移</h2>
+                    <span class="chart-subtitle" id="chartSubtitle"></span>
+                </div>
+                <div class="result-actions">
+                    <span class="total-badge" id="totalBadge">合計: 0件</span>
+                    <button type="button" id="showMachinesBtn" class="btn btn-outline btn-sm">
+                        📋 該当機番を表示
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="defectsChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 該当機番詳細パネル（グラフ下部） -->
+        <div class="card" id="machinesPanel" style="display: none;">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <h3 class="card-title">不具合発生機番リスト</h3>
+                    <span class="result-count-badge" id="machinesCountBadge">0件</span>
+                </div>
+                <div class="result-actions">
+                    <button type="button" id="copyMachinesBtn" class="btn btn-outline btn-sm" disabled>
+                        📋 機番コピー
+                    </button>
+                    <button type="button" id="toTimeseriesBtn" class="btn btn-outline btn-sm" disabled>
+                        時系列へ →
+                    </button>
+                    <button type="button" id="toHistogramBtn" class="btn btn-outline btn-sm" disabled>
+                        断面データへ →
+                    </button>
+                    <button type="button" id="closeMachinesPanel" class="btn btn-outline btn-sm">✕ 閉じる</button>
+                </div>
+            </div>
+            <div class="table-container table-scrollable" style="max-height: 300px;">
+                <table class="data-table" id="machinesTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="selectAllMachines"></th>
+                            <th class="sortable" data-sort-key="machine_id">機番 <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort-key="model">機種 <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort-key="defect_type">不具合種別 <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort-key="firmware_version">FWバージョン <span
+                                    class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-sort-key="count">発生件数 <span class="sort-icon">⇅</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="machinesBody"></tbody>
+                </table>
+            </div>
+            <div class="pagination-controls"
+                style="padding: var(--spacing-sm); border-top: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-sm);">
+                <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+                    <span id="selectedMachinesCount">0件選択中</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: var(--spacing-md);">
+                    <div style="display: flex; align-items: center; gap: var(--spacing-xs);">
+                        <label for="pageSizeSelect"
+                            style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">表示件数:</label>
+                        <select id="pageSizeSelect" class="form-select"
+                            style="padding: 4px 8px; font-size: var(--font-size-sm);">
+                            <option value="10">10件</option>
+                            <option value="20" selected>20件</option>
+                            <option value="50">50件</option>
+                            <option value="100">100件</option>
+                        </select>
+                    </div>
+                    <div id="paginationInfo"
+                        style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">0件中 0-0件</div>
+                    <div style="display: flex; gap: var(--spacing-xs);">
+                        <button type="button" id="prevPageBtn" class="btn btn-outline btn-sm" disabled>← 前へ</button>
+                        <button type="button" id="nextPageBtn" class="btn btn-outline btn-sm" disabled>次へ →</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initDefectsPage();
+    });
+
+    let defectsChart = null;
+    // 現在のクエリパラメータを保持（グラフクリック時に使用）
+    let currentQueryParams = {};
+
+    async function initDefectsPage() {
+        const form = document.getElementById('defectsForm');
+        const seriesSelect = document.getElementById('defect-series');
+        const modelListContainer = document.getElementById('defect-model-list');
+        const defectTypeListContainer = document.getElementById('defect-type-list');
+        const dateFromInput = document.getElementById('defect-date-from');
+        const dateToInput = document.getElementById('defect-date-to');
+        const chartCard = document.getElementById('chartCard');
+
+        // 初期データ読み込み
+        const [series, defectTypes] = await Promise.all([
+            fetchAPI('/series'),
+            fetchAPI('/defect-types'),
+        ]);
+
+        populateSelect('defect-series', series, 'すべて');
+
+        // 不具合種別チェックボックスリストを生成
+        defectTypeListContainer.innerHTML = defectTypes.map(dt => `
+            <label class="checkbox-item" style="display: block; padding: 4px 0;">
+                <input type="checkbox" class="defect-type-checkbox" value="${dt}" checked>
+                <span>${dt}</span>
+            </label>
+        `).join('');
+
+        // 日付初期値（過去12ヶ月）
+        const today = new Date();
+        const yearAgo = new Date(today);
+        yearAgo.setFullYear(today.getFullYear() - 1);
+        dateFromInput.value = yearAgo.toISOString().split('T')[0];
+        dateToInput.value = today.toISOString().split('T')[0];
+
+        // シリーズ変更時に機種チェックボックスを更新
+        seriesSelect.addEventListener('change', async () => {
+            if (seriesSelect.value) {
+                const models = await fetchAPI(`/models/${encodeURIComponent(seriesSelect.value)}`);
+                modelListContainer.innerHTML = models.map(m => `
+                    <label class="checkbox-item" style="display: block; padding: 4px 0;">
+                        <input type="checkbox" class="model-checkbox" value="${m}" checked>
+                        <span>${m}</span>
+                    </label>
+                `).join('');
+            } else {
+                modelListContainer.innerHTML = '<label class="form-hint">シリーズを選択してください</label>';
+            }
+        });
+
+        // フォーム送信
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await loadDefectsData();
+        });
+
+        async function loadDefectsData() {
+            const groupBy = document.querySelector('input[name="groupBy"]:checked').value;
+
+            // 選択された機種を取得
+            const selectedModels = Array.from(document.querySelectorAll('.model-checkbox:checked')).map(cb => cb.value);
+            // 選択された不具合種別を取得
+            const selectedDefectTypes = Array.from(document.querySelectorAll('.defect-type-checkbox:checked')).map(cb => cb.value);
+
+            const params = {
+                series: seriesSelect.value || null,
+                models: selectedModels.length > 0 ? selectedModels : null,
+                date_from: dateFromInput.value,
+                date_to: dateToInput.value,
+                defect_types: selectedDefectTypes.length > 0 ? selectedDefectTypes : null,
+                group_by: groupBy,
+            };
+
+            // グラフクリック時に使用するため保持
+            currentQueryParams = params;
+
+            try {
+                // 時系列データ取得
+                const tsData = await fetch('/api/defects/timeseries', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params),
+                }).then(r => r.json());
+
+                renderTimeseriesChart(tsData, groupBy);
+                chartCard.style.display = 'block';
+
+                // 機種別集計テーブルは表示しない（削除）
+
+            } catch (error) {
+                console.error('Failed to load defects data:', error);
+                alert('データの取得に失敗しました');
+            }
+        }
+
+        function renderTimeseriesChart(data, groupBy) {
+            const ctx = document.getElementById('defectsChart').getContext('2d');
+
+            if (defectsChart) {
+                defectsChart.destroy();
+            }
+
+            const colors = [
+                'rgba(239, 68, 68, 0.8)',   // 赤
+                'rgba(245, 158, 11, 0.8)',  // オレンジ
+                'rgba(59, 130, 246, 0.8)',  // 青
+                'rgba(16, 185, 129, 0.8)',  // 緑
+                'rgba(139, 92, 246, 0.8)',  // 紫
+            ];
+
+            const datasets = data.datasets.map((ds, i) => ({
+                label: ds.label,
+                data: ds.data,
+                backgroundColor: colors[i % colors.length],
+                borderColor: colors[i % colors.length].replace('0.8', '1'),
+                borderWidth: 1,
+            }));
+
+            defectsChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: datasets,
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            stacked: true,
+                            title: {
+                                display: true,
+                                text: groupBy === 'month' ? '年月' : '日付',
+                            },
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '発生件数',
+                            },
+                        },
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                    },
+                    // グラフクリックイベント
+                    onClick: async (event, elements) => {
+                        if (elements.length > 0) {
+                            const element = elements[0];
+                            const datasetIndex = element.datasetIndex;
+                            const index = element.index;
+
+                            const period = data.labels[index];
+                            const defectType = data.datasets[datasetIndex].label;
+
+                            await loadMachinesByClick(period, defectType);
+                        }
+                    },
+                },
+            });
+
+            // 合計表示
+            document.getElementById('totalBadge').textContent = `合計: ${data.total_count.toLocaleString()}件`;
+            document.getElementById('chartSubtitle').textContent =
+                groupBy === 'month' ? '（月次集計）' : '（日次集計）';
+        }
+
+        // グラフクリック時の機番取得
+        async function loadMachinesByClick(period, defectType) {
+            const params = {
+                series: currentQueryParams.series,
+                models: currentQueryParams.models,
+                date_from: currentQueryParams.date_from,
+                date_to: currentQueryParams.date_to,
+                defect_types: currentQueryParams.defect_types,
+                target_period: period,
+                target_defect_type: defectType,
+            };
+
+            try {
+                const data = await fetch('/api/defects/machines', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params),
+                }).then(r => r.json());
+
+                currentMachinesData = data.machines;
+                renderMachinesTable(data.machines);
+                document.getElementById('machinesPanel').style.display = 'block';
+
+                // フィルタ情報を表示（リスト件数を使用）
+                const filterText = `${period} / ${defectType}`;
+                const listCount = data.machines.length;
+                const totalCount = data.total_count;
+                if (totalCount > listCount) {
+                    document.getElementById('machinesCountBadge').textContent = `${listCount}件（全${totalCount}件中 / ${filterText}）`;
+                } else {
+                    document.getElementById('machinesCountBadge').textContent = `${listCount}件（${filterText}）`;
+                }
+            } catch (error) {
+                console.error('Failed to load machines:', error);
+                alert('機番リストの取得に失敗しました');
+            }
+        }
+
+        // loadMachinesByClick関数をグローバルに公開
+        window.loadMachinesByClick = loadMachinesByClick;
+    }
+
+    async function fetchAPI(endpoint) {
+        const response = await fetch(`/api${endpoint}`);
+        if (!response.ok) throw new Error('API Error');
+        return response.json();
+    }
+
+    function populateSelect(selectId, options, placeholder = '選択してください') {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        select.innerHTML = `<option value="">${placeholder}</option>` +
+            options.map(o => `<option value="${o}">${o}</option>`).join('');
+    }
+
+    // ========================================
+    // 連携機能
+    // ========================================
+    let currentMachinesData = [];
+
+    // ページネーションとソートの状態
+    let currentPage = 1;
+    let pageSize = 20;
+    let sortKey = null;
+    let sortOrder = 'asc'; // 'asc' or 'desc'
+
+
+    // 該当機番を表示ボタン
+    document.getElementById('showMachinesBtn').addEventListener('click', async () => {
+        const seriesSelect = document.getElementById('defect-series');
+        const dateFromInput = document.getElementById('defect-date-from');
+        const dateToInput = document.getElementById('defect-date-to');
+
+        // 選択された機種を取得
+        const selectedModels = Array.from(document.querySelectorAll('.model-checkbox:checked')).map(cb => cb.value);
+        // 選択された不具合種別を取得
+        const selectedDefectTypes = Array.from(document.querySelectorAll('.defect-type-checkbox:checked')).map(cb => cb.value);
+
+        const params = {
+            series: seriesSelect.value || null,
+            models: selectedModels.length > 0 ? selectedModels : null,
+            date_from: dateFromInput.value,
+            date_to: dateToInput.value,
+            defect_types: selectedDefectTypes.length > 0 ? selectedDefectTypes : null,
+        };
+
+        try {
+            const data = await fetch('/api/defects/machines', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params),
+            }).then(r => r.json());
+
+            currentMachinesData = data.machines;
+            renderMachinesTable(data.machines);
+            document.getElementById('machinesPanel').style.display = 'block';
+            // 表示件数: リストの件数を表示（100件制限あり）
+            const listCount = data.machines.length;
+            const totalCount = data.total_count;
+            if (totalCount > listCount) {
+                document.getElementById('machinesCountBadge').textContent = `${listCount}件（全${totalCount}件中）`;
+            } else {
+                document.getElementById('machinesCountBadge').textContent = `${listCount}件`;
+            }
+        } catch (error) {
+            console.error('Failed to load machines:', error);
+            alert('機番リストの取得に失敗しました');
+        }
+    });
+
+    function renderMachinesTable(machines, resetPage = true) {
+        if (resetPage) {
+            currentPage = 1;
+        }
+
+        const tbody = document.getElementById('machinesBody');
+        if (machines.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">該当する機番がありません</td></tr>';
+            updatePaginationControls(0);
+            return;
+        }
+
+        // ソート適用
+        let sortedMachines = [...machines];
+        if (sortKey) {
+            sortedMachines.sort((a, b) => {
+                let valA = a[sortKey];
+                let valB = b[sortKey];
+
+                // 数値の場合は数値比較
+                if (sortKey === 'count') {
+                    valA = Number(valA);
+                    valB = Number(valB);
+                } else {
+                    valA = String(valA || '').toLowerCase();
+                    valB = String(valB || '').toLowerCase();
+                }
+
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        // ページネーション適用
+        const totalCount = sortedMachines.length;
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = Math.min(startIndex + pageSize, totalCount);
+        const paginatedMachines = sortedMachines.slice(startIndex, endIndex);
+
+        tbody.innerHTML = paginatedMachines.map(m => `
+            <tr>
+                <td><input type="checkbox" class="machine-checkbox" value="${m.machine_id}"></td>
+                <td>${m.machine_id}</td>
+                <td>${m.model}</td>
+                <td>${m.defect_type}</td>
+                <td>${m.firmware_version || '-'}</td>
+                <td>${m.count}</td>
+            </tr>
+        `).join('');
+
+        // ページネーション情報を更新
+        updatePaginationControls(totalCount);
+
+        // ソートアイコンを更新
+        updateSortIcons();
+
+        // 選択数更新
+        updateSelectedCount();
+    }
+
+    function updatePaginationControls(totalCount) {
+        const startIndex = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+        const endIndex = Math.min(currentPage * pageSize, totalCount);
+        const totalPages = Math.ceil(totalCount / pageSize);
+
+        document.getElementById('paginationInfo').textContent =
+            `${totalCount}件中 ${startIndex}-${endIndex}件`;
+
+        document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+        document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+    }
+
+    function updateSortIcons() {
+        document.querySelectorAll('#machinesTable th.sortable').forEach(th => {
+            const icon = th.querySelector('.sort-icon');
+            const key = th.dataset.sortKey;
+            if (key === sortKey) {
+                icon.textContent = sortOrder === 'asc' ? '↑' : '↓';
+                th.classList.add('sorted');
+            } else {
+                icon.textContent = '⇅';
+                th.classList.remove('sorted');
+            }
+        });
+    }
+
+    function getSelectedMachineIds() {
+        return Array.from(document.querySelectorAll('.machine-checkbox:checked')).map(cb => cb.value);
+    }
+
+    function updateSelectedCount() {
+        const selected = getSelectedMachineIds();
+        document.getElementById('selectedMachinesCount').textContent = `${selected.length}件選択中`;
+
+        const hasSelection = selected.length > 0;
+        document.getElementById('copyMachinesBtn').disabled = !hasSelection;
+        document.getElementById('toTimeseriesBtn').disabled = !hasSelection;
+        document.getElementById('toHistogramBtn').disabled = !hasSelection;
+    }
+
+    // チェックボックスイベント
+    document.getElementById('machinesBody').addEventListener('change', (e) => {
+        if (e.target.classList.contains('machine-checkbox')) {
+            updateSelectedCount();
+        }
+    });
+
+    // 全選択
+    document.getElementById('selectAllMachines').addEventListener('change', (e) => {
+        document.querySelectorAll('.machine-checkbox').forEach(cb => {
+            cb.checked = e.target.checked;
+        });
+        updateSelectedCount();
+    });
+
+    // パネル閉じる
+    document.getElementById('closeMachinesPanel').addEventListener('click', () => {
+        document.getElementById('machinesPanel').style.display = 'none';
+    });
+
+    // 機番コピー
+    document.getElementById('copyMachinesBtn').addEventListener('click', () => {
+        const selected = getSelectedMachineIds();
+        navigator.clipboard.writeText(selected.join('\n')).then(() => {
+            alert(`${selected.length}件の機番をクリップボードにコピーしました`);
+        });
+    });
+
+    // 時系列表示へ
+    document.getElementById('toTimeseriesBtn').addEventListener('click', () => {
+        const selected = getSelectedMachineIds();
+        // localStorageに保存して遷移
+        localStorage.setItem('defects-selected-machines', selected.join('\n'));
+        window.location.href = '/timeseries';
+    });
+
+    // 断面データへ
+    document.getElementById('toHistogramBtn').addEventListener('click', () => {
+        const selected = getSelectedMachineIds();
+        // localStorageに保存して遷移
+        localStorage.setItem('defects-selected-machines', selected.join('\n'));
+        window.location.href = '/histogram';
+    });
+
+    // ========================================
+    // ソート機能
+    // ========================================
+    document.querySelectorAll('#machinesTable th.sortable').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', () => {
+            const key = th.dataset.sortKey;
+            if (sortKey === key) {
+                // 同じカラムをクリック -> 順序を反転
+                sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                // 別のカラム -> 昇順でソート
+                sortKey = key;
+                sortOrder = 'asc';
+            }
+            renderMachinesTable(currentMachinesData, false);
+        });
+    });
+
+    // ========================================
+    // ページネーション
+    // ========================================
+    document.getElementById('pageSizeSelect').addEventListener('change', (e) => {
+        pageSize = parseInt(e.target.value, 10);
+        currentPage = 1;
+        renderMachinesTable(currentMachinesData, false);
+    });
+
+    document.getElementById('prevPageBtn').addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            renderMachinesTable(currentMachinesData, false);
+        }
+    });
+
+    document.getElementById('nextPageBtn').addEventListener('click', () => {
+        const totalPages = Math.ceil(currentMachinesData.length / pageSize);
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderMachinesTable(currentMachinesData, false);
+        }
+    });
+</script>
+{% endblock %}

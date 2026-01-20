@@ -112,9 +112,11 @@ def get_timeseries(
     category: str,
     characteristic_id: str,
     aggregation: str,
+    db: AsyncSession | None = None,
 ) -> dict[str, Any]:
     """時系列データを取得"""
     # 現時点ではダミーデータのみ（本番DBへの時系列データ格納は別途実装）
+    # DB対応は非同期関数が必要なため、APIルーター側で切り替え
     return dummy.generate_timeseries_data(
         machine_ids=machine_ids,
         category=category,
@@ -130,8 +132,10 @@ def get_multi_timeseries(
     x_axis_type: str = "time",
     date_from: str | None = None,
     date_to: str | None = None,
+    db: AsyncSession | None = None,
 ) -> dict[str, Any]:
     """多変量時系列データを取得"""
+    # DB対応は非同期関数が必要なため、APIルーター側で切り替え
     return dummy.generate_multi_timeseries_data(
         machine_ids=machine_ids,
         variables=variables,

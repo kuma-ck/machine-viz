@@ -45,6 +45,8 @@ class Machine(Base):
     model_id: Mapped[str] = mapped_column(ForeignKey("models.id"))
     manufacture_month: Mapped[str] = mapped_column(String(7))  # YYYY-MM
     operation_start_month: Mapped[str] = mapped_column(String(7))  # YYYY-MM
+    firmware_version: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # v1.2.3 形式
+    options: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # カンマ区切り: OP-A, OP-B
     
     # リレーション
     model: Mapped["Model"] = relationship(back_populates="machines")

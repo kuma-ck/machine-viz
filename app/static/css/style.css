@@ -942,6 +942,33 @@ body {
     gap: var(--spacing-sm);
 }
 
+/* ソート可能テーブルヘッダー */
+.data-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast);
+}
+
+.data-table th.sortable:hover {
+    background: rgba(99, 102, 241, 0.15);
+}
+
+.data-table th.sortable.sorted {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--color-accent-primary);
+}
+
+.data-table th .sort-icon {
+    margin-left: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+    opacity: 0.6;
+}
+
+.data-table th.sortable:hover .sort-icon,
+.data-table th.sortable.sorted .sort-icon {
+    opacity: 1;
+}
+
 /* ========================================
    チャート
    ======================================== */

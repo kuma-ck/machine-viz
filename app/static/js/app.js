@@ -545,6 +545,8 @@ function renderSearchResults(results, isSampled = false, resetPage = true) {
             <td>${machine.model}</td>
             <td>${machine.manufacture_month}</td>
             <td>${machine.operation_start_month}</td>
+            <td>${machine.firmware_version || '-'}</td>
+            <td>${machine.options || '-'}</td>
         `;
         tbody.appendChild(tr);
     });

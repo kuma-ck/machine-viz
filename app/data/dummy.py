@@ -96,6 +96,7 @@ def _get_machine_detail(machine_id: str, model: str, series: str) -> dict[str, A
     """
     機番の詳細情報を取得（キャッシュ付き）
     製造月・稼働開始月は24ヶ月に均等分布するよう割り当て
+    ファームウェアバージョン・オプション構成も含む
     """
     if machine_id in _machine_details_cache:
         return _machine_details_cache[machine_id]
@@ -117,12 +118,27 @@ def _get_machine_detail(machine_id: str, model: str, series: str) -> dict[str, A
     # 稼働開始月: 製造月より後（0〜mfg_idx-1の範囲で均等分布）
     op_idx = machine_num % mfg_idx if mfg_idx > 0 else 0
     
+    # ファームウェアバージョン（機番に基づいて決定論的に割り当て）
+    fw_major = 1 + (machine_num % 3)  # 1-3
+    fw_minor = (machine_num // 3) % 10  # 0-9
+    fw_patch = (machine_num // 30) % 20  # 0-19
+    firmware_version = f"v{fw_major}.{fw_minor}.{fw_patch}"
+    
+    # オプション構成（機番に基づいて決定論的に割り当て）
+    available_options = ["OP-A", "OP-B", "OP-C", "OP-D", "OP-E", "OP-F"]
+    option_mask = machine_num % 64  # 6ビットのマスク
+    options = [opt for i, opt in enumerate(available_options) if option_mask & (1 << i)]
+    if not options:
+        options = ["標準"]
+    
     detail = {
         "machine_id": machine_id,
         "model": model,
         "series": series,
         "manufacture_month": months[mfg_idx],
         "operation_start_month": months[op_idx],
+        "firmware_version": firmware_version,
+        "options": ", ".join(options),
     }
     _machine_details_cache[machine_id] = detail
     return detail
@@ -961,3 +977,352 @@ def generate_distribution_boxplot_data(
                 "chart_type": "boxplot",
                 "raw_data_by_bin": final_raw_data,
             }
+
+
+# ========================================
+# 不具合データ生成
+# ========================================
+DEFECT_TYPES = ["異音", "動作不良", "停止", "エラー表示", "部品破損"]
+SEVERITY_LEVELS = ["高", "中", "低"]
+
+
+def get_defect_types() -> list[str]:
+    """不具合種別マスタを取得"""
+    return DEFECT_TYPES
+
+
+def generate_defect_timeseries(
+    series: str | None,
+    models: list[str] | None,  # 複数選択対応
+    date_from: str,
+    date_to: str,
+    defect_types: list[str] | None,  # 複数選択対応
+    group_by: str,  # 'month' | 'day'
+) -> dict[str, Any]:
+    """
+    不具合発生件数の時系列データを生成
+    
+    Returns:
+        {
+            "labels": ["2024-01", "2024-02", ...] or ["2024-01-01", ...],
+            "datasets": [
+                {"label": "異音", "data": [5, 3, 8, ...]},
+                {"label": "動作不良", "data": [2, 4, 1, ...]},
+                ...
+            ],
+            "total_count": 150
+        }
+    """
+    from datetime import datetime, timedelta
+    
+    # 日付をパース
+    try:
+        start_date = datetime.strptime(date_from, "%Y-%m-%d")
+        end_date = datetime.strptime(date_to, "%Y-%m-%d")
+    except ValueError:
+        start_date = datetime(2025, 1, 1)
+        end_date = datetime(2026, 1, 1)
+    
+    # ラベル生成
+    labels = []
+    current = start_date
+    if group_by == "month":
+        while current <= end_date:
+            labels.append(current.strftime("%Y-%m"))
+            # 次の月へ
+            if current.month == 12:
+                current = current.replace(year=current.year + 1, month=1)
+            else:
+                current = current.replace(month=current.month + 1)
+    else:  # day
+        while current <= end_date:
+            labels.append(current.strftime("%Y-%m-%d"))
+            current += timedelta(days=1)
+    
+    # 対象の不具合種別（複数選択対応）
+    target_types = defect_types if defect_types else DEFECT_TYPES
+    
+    # 対象機番を取得（複数選択対応）
+    target_machines = []
+    if models:
+        for m in models:
+            target_machines.extend(MACHINES_BY_MODEL.get(m, []))
+    elif series:
+        for m in MODELS_BY_SERIES.get(series, []):
+            target_machines.extend(MACHINES_BY_MODEL.get(m, []))
+    else:
+        for machines in MACHINES_BY_MODEL.values():
+            target_machines.extend(machines)
+    
+    # データセット生成
+    datasets = []
+    total_count = 0
+    
+    for dtype in target_types:
+        data = []
+        for i, label in enumerate(labels):
+            # シード：ラベル + 不具合種別 + 対象機番数
+            seed = hash(f"{label}_{dtype}_{len(target_machines)}_{series}_{'-'.join(models) if models else ''}")
+            random.seed(seed)
+            
+            # 発生件数を生成（機番数に比例、最大で機番数の5%程度）
+            base_rate = 0.002  # 0.2%の基礎発生率
+            # 不具合種別による重み
+            type_weights = {"異音": 1.5, "動作不良": 1.2, "停止": 0.8, "エラー表示": 1.0, "部品破損": 0.5}
+            weight = type_weights.get(dtype, 1.0)
+            
+            # 季節変動（夏と冬に多め）
+            month = int(label.split("-")[1]) if "-" in label else 1
+            seasonal_factor = 1.0 + 0.3 * abs((month - 6.5) / 6.5)
+            
+            expected_count = len(target_machines) * base_rate * weight * seasonal_factor
+            count = max(0, int(random.gauss(expected_count, expected_count * 0.3)))
+            data.append(count)
+            total_count += count
+        
+        datasets.append({
+            "label": dtype,
+            "data": data,
+        })
+    
+    random.seed()
+    
+    return {
+        "labels": labels,
+        "datasets": datasets,
+        "total_count": total_count,
+    }
+
+
+def generate_defect_summary(
+    series: str | None,
+    models: list[str] | None,  # 複数選択対応
+    date_from: str,
+    date_to: str,
+    defect_types: list[str] | None,  # 複数選択対応
+) -> dict[str, Any]:
+    """
+    不具合発生件数の集計テーブルデータを生成（機種×月マトリクス）
+    
+    Returns:
+        {
+            "columns": ["2024-01", "2024-02", ...],
+            "rows": [
+                {"model": "A-1", "data": [5, 3, 8, ...], "total": 16},
+                {"model": "A-2", "data": [2, 4, 1, ...], "total": 7},
+            ],
+            "column_totals": [7, 7, 9, ...],
+            "grand_total": 150
+        }
+    """
+    from datetime import datetime
+    
+    # 日付をパース
+    try:
+        start_date = datetime.strptime(date_from, "%Y-%m-%d")
+        end_date = datetime.strptime(date_to, "%Y-%m-%d")
+    except ValueError:
+        start_date = datetime(2025, 1, 1)
+        end_date = datetime(2026, 1, 1)
+    
+    # 月ラベル生成
+    columns = []
+    current = start_date
+    while current <= end_date:
+        columns.append(current.strftime("%Y-%m"))
+        if current.month == 12:
+            current = current.replace(year=current.year + 1, month=1)
+        else:
+            current = current.replace(month=current.month + 1)
+    
+    # 対象機種を取得（複数選択対応）
+    target_models = []
+    if models:
+        target_models = models
+    elif series:
+        target_models = MODELS_BY_SERIES.get(series, [])
+    else:
+        for model_list in MODELS_BY_SERIES.values():
+            target_models.extend(model_list)
+    
+    # 対象の不具合種別（複数選択対応）
+    target_types = defect_types if defect_types else DEFECT_TYPES
+    
+    # 行データ生成
+    rows = []
+    column_totals = [0] * len(columns)
+    grand_total = 0
+    
+    for m in target_models:
+        machines = MACHINES_BY_MODEL.get(m, [])
+        row_data = []
+        row_total = 0
+        
+        for i, col in enumerate(columns):
+            seed = hash(f"{col}_{m}_{len(target_types)}")
+            random.seed(seed)
+            
+            base_rate = 0.002 * len(target_types)
+            count = max(0, int(random.gauss(len(machines) * base_rate, len(machines) * base_rate * 0.3)))
+            row_data.append(count)
+            row_total += count
+            column_totals[i] += count
+        
+        rows.append({
+            "model": m,
+            "data": row_data,
+            "total": row_total,
+        })
+        grand_total += row_total
+    
+    random.seed()
+    
+    return {
+        "columns": columns,
+        "rows": rows,
+        "column_totals": column_totals,
+        "grand_total": grand_total,
+    }
+
+
+def generate_defect_machines(
+    series: str | None,
+    models: list[str] | None,  # 複数選択対応
+    date_from: str,
+    date_to: str,
+    defect_types: list[str] | None,  # 複数選択対応
+    target_period: str | None = None,  # グラフクリック時：特定期間
+    target_defect_type: str | None = None,  # グラフクリック時：特定不具合種別
+) -> dict[str, Any]:
+    """
+    不具合が発生した機番リストを生成
+    グラフの件数と一致するよう、同じシード・ロジックで件数を計算
+    
+    Args:
+        target_period: グラフクリック時の特定期間（"2025-01" or "2025-01-15"）
+        target_defect_type: グラフクリック時の特定不具合種別
+    
+    Returns:
+        {
+            "machines": [...],
+            "total_count": N  # グラフと同じ件数
+        }
+    """
+    # 対象機番を取得（複数選択対応）
+    target_machines = []
+    
+    if models:
+        for m in models:
+            target_machines.extend(MACHINES_BY_MODEL.get(m, []))
+    elif series:
+        for m in MODELS_BY_SERIES.get(series, []):
+            target_machines.extend(MACHINES_BY_MODEL.get(m, []))
+    else:
+        for s, model_list in MODELS_BY_SERIES.items():
+            for m in model_list:
+                target_machines.extend(MACHINES_BY_MODEL.get(m, []))
+    
+    # 対象の不具合種別
+    if target_defect_type:
+        target_types = [target_defect_type]
+    elif defect_types:
+        target_types = defect_types
+    else:
+        target_types = DEFECT_TYPES
+    
+    # グラフクリック時は target_period と target_defect_type が指定される
+    if target_period and target_defect_type:
+        # 同じシードで件数を計算（generate_defect_timeseriesと同じロジック）
+        seed = hash(f"{target_period}_{target_defect_type}_{len(target_machines)}_{series}_{'-'.join(models) if models else ''}")
+        random.seed(seed)
+        
+        base_rate = 0.002
+        type_weights = {"異音": 1.5, "動作不良": 1.2, "停止": 0.8, "エラー表示": 1.0, "部品破損": 0.5}
+        weight = type_weights.get(target_defect_type, 1.0)
+        
+        # 季節変動
+        parts = target_period.split("-")
+        month = int(parts[1]) if len(parts) >= 2 else 1
+        seasonal_factor = 1.0 + 0.3 * abs((month - 6.5) / 6.5)
+        
+        expected_count = len(target_machines) * base_rate * weight * seasonal_factor
+        target_count = max(0, int(random.gauss(expected_count, expected_count * 0.3)))
+        
+        # その件数分の機番を生成
+        machines_with_defects = []
+        if target_count > 0 and len(target_machines) > 0:
+            random.seed(seed + 1)
+            selected_machines = random.sample(
+                target_machines, 
+                min(target_count, len(target_machines))
+            )
+            
+            for machine_id in selected_machines:
+                model_name = "-".join(machine_id.split("-")[:2])
+                # ファームウェアバージョンを決定論的に生成
+                parts = machine_id.split("-")
+                machine_num = int(parts[-1]) if len(parts) >= 3 else hash(machine_id) % 10000
+                fw_major = 1 + (machine_num % 3)
+                fw_minor = (machine_num // 3) % 10
+                fw_patch = (machine_num // 30) % 20
+                firmware_version = f"v{fw_major}.{fw_minor}.{fw_patch}"
+                
+                machines_with_defects.append({
+                    "machine_id": machine_id,
+                    "model": model_name,
+                    "defect_type": target_defect_type,
+                    "count": 1,
+                    "period": target_period,
+                    "firmware_version": firmware_version,
+                })
+        
+        random.seed()
+        
+        return {
+            "machines": machines_with_defects,
+            "total_count": len(machines_with_defects),
+            "filter_info": {
+                "period": target_period,
+                "defect_type": target_defect_type,
+            },
+        }
+    
+    else:
+        # 全体表示の場合
+        machines_with_defects = []
+        
+        for machine_id in target_machines:
+            seed_key = f"{machine_id}_{date_from}_{date_to}_{'-'.join(target_types)}"
+            seed = hash(seed_key)
+            random.seed(seed)
+            
+            if random.random() < 0.05:
+                dtype = random.choice(target_types)
+                count = random.randint(1, 5)
+                model_name = "-".join(machine_id.split("-")[:2])
+                
+                # ファームウェアバージョンを決定論的に生成
+                parts = machine_id.split("-")
+                machine_num = int(parts[-1]) if len(parts) >= 3 else hash(machine_id) % 10000
+                fw_major = 1 + (machine_num % 3)
+                fw_minor = (machine_num // 3) % 10
+                fw_patch = (machine_num // 30) % 20
+                firmware_version = f"v{fw_major}.{fw_minor}.{fw_patch}"
+                
+                machines_with_defects.append({
+                    "machine_id": machine_id,
+                    "model": model_name,
+                    "defect_type": dtype,
+                    "count": count,
+                    "period": None,
+                    "firmware_version": firmware_version,
+                })
+        
+        random.seed()
+        machines_with_defects.sort(key=lambda x: x["count"], reverse=True)
+        
+        return {
+            "machines": machines_with_defects,
+            "total_count": len(machines_with_defects),
+            "filter_info": None,
+        }

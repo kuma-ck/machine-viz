@@ -75,3 +75,10 @@ async def table(request: Request, is_authenticated: bool = Depends(check_auth)):
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse("table.html", {"request": request})
 
+
+@router.get("/defects", response_class=HTMLResponse)
+async def defects(request: Request, is_authenticated: bool = Depends(check_auth)):
+    """不具合分析ページ"""
+    if not is_authenticated:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("defects.html", {"request": request})
